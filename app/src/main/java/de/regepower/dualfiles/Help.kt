@@ -2,21 +2,22 @@ package de.regepower.dualfiles
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.ActivityNotFoundException
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
-import android.text.util.Linkify
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.method.LinkMovementMethod
+import android.text.style.URLSpan
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
-/** Help dialog: foldable chapters, then version, build day, donation line and FOSS note. */
+/** Help dialog: foldable chapters, then version, build day, donation line (in-text links) and FOSS note. */
 object Help {
     @Suppress("DEPRECATION")
     fun show(a: Activity) {
@@ -63,31 +64,43 @@ object Help {
         footer.textSize = 12f
         footer.setTextColor(a.getColor(R.color.md_on_surface_variant))
         footer.setPadding(0, (16 * dp).toInt(), 0, (8 * dp).toInt())
-        footer.autoLinkMask = Linkify.WEB_URLS // before setText, so the URL becomes tappable
-        footer.text = a.getString(
-            R.string.help_footer,
-            a.getString(R.string.app_name),
-            info.versionName,
-            day,
-            a.getString(R.string.donate_text),
-            a.getString(R.string.foss_text, a.getString(R.string.source_url))
-        )
+        // The donation links live in the string (<a href>, kept by getText); the source link gets its own span.
+        // No autoLink/Linkify: they would drop the existing links.
+        val url = a.getString(R.string.source_url)
+        val foss = a.getString(R.string.foss_text, url)
+        val text = SpannableStringBuilder()
+            .append(a.getString(R.string.app_name)).append(' ').append(info.versionName).append(" · ").append(day).append('\n')
+            .append(a.getText(R.string.donate_text)).append("\n\n")
+        val start = text.length + foss.indexOf(url)
+        text.append(foss)
+        text.setSpan(URLSpan(url), start, start + url.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        footer.text = text
+        footer.movementMethod = LinkMovementMethod.getInstance()
         col.addView(footer)
 
         val scroll = ScrollView(a)
         scroll.addView(col)
-        AlertDialog.Builder(a)
+        val d = AlertDialog.Builder(a)
             .setTitle(R.string.help)
             .setView(scroll)
             .setPositiveButton(R.string.help_ok, null)
-            .setNeutralButton(R.string.donate) { _, _ ->
-                val url = a.getString(R.string.donate_url)
-                try {
-                    a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                } catch (e: ActivityNotFoundException) {
-                    Toast.makeText(a, url, Toast.LENGTH_LONG).show()
-                }
-            }
             .show()
+        centerOk(d)
+    }
+
+    /** A single button, centred: hide the bar's spacer and let the button take the width. */
+    private fun centerOk(d: AlertDialog) {
+        val b = d.getButton(AlertDialog.BUTTON_POSITIVE) ?: return
+        val bar = b.parent as? ViewGroup ?: return
+        for (i in 0 until bar.childCount) {
+            val c = bar.getChildAt(i)
+            if (c !== b) c.visibility = View.GONE
+        }
+        (b.layoutParams as? LinearLayout.LayoutParams)?.let {
+            it.width = ViewGroup.LayoutParams.MATCH_PARENT
+            it.weight = 1f
+            it.gravity = Gravity.CENTER
+            b.layoutParams = it
+        }
     }
 }

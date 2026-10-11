@@ -17,8 +17,7 @@
     <string name="no_app">Keine App kann diese Datei öffnen</string>
     <string name="help">Hilfe</string>
     <string name="help_ok">Verstanden</string>
-    <string name="donate">Spenden</string>
-    <string name="donate_text">Diese App ist kleiner als ein Foto. Unterstütze die Entwicklung auf Liberapay.</string>
+    <string name="donate_text">Diese App ist kleiner als ein Foto. Wer mag, kann die Entwicklung über <a href="https://liberapay.com/regepower/donate">Liberapay</a> oder <a href="https://github.com/sponsors/regepower">GitHub Sponsors</a> unterstützen.</string>
     <string name="foss_text">Diese App ist freie Open-Source-Software (FOSS) unter der Lizenz GPL-3.0.\nQuellcode: %1$s</string>
     <string name="help_expanded">aufgeklappt</string>
     <string name="help_collapsed">zugeklappt</string>
