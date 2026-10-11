@@ -95,6 +95,7 @@ private class Entry(
     val isDir: Boolean = false,
     val size: Long = 0,
     val modified: Long = 0,
+    val depth: Int = 0,  // level inside an archive tree (0 = top)
 ) {
     val key = file.name.lowercase()
     var meta = ""       // size, tab, date (files); folders get their item count in the row
@@ -116,6 +117,7 @@ private class Pane(val color: Int, val bandRes: Int, var dir: File) {
     lateinit var fileList: PanList
     var treePage = 0
     var filePage = 0
+    val arcOpen = HashSet<String>()        // unfolded folders (inner paths) of the archive shown as a tree
     var lastMarked: File? = null           // row marked last: kept visible when the marking bar appears
     @Volatile var gen = 0
     var raw: List<Entry> = emptyList()   // as read from disk
@@ -415,6 +417,7 @@ class MainActivity : Activity() {
             for ((i, p) in panes.withIndex()) {
                 b.getString("dir$i")?.let { p.dir = File(it) }
                 b.getStringArray("sel$i")?.forEach { p.selected.add(File(it)) }
+                b.getStringArray("arc$i")?.let { p.arcOpen.addAll(it) }
                 p.sortBy = SortBy.values().getOrNull(b.getInt("sort$i")) ?: p.sortBy
                 p.sortDesc = b.getBoolean("desc$i")
                 p.filter = Filter.values().getOrNull(b.getInt("filter$i")) ?: p.filter
@@ -455,6 +458,7 @@ class MainActivity : Activity() {
         for ((i, p) in panes.withIndex()) {
             outState.putString("dir$i", p.dir.path)
             outState.putStringArray("sel$i", p.selected.map { it.path }.toTypedArray())
+            outState.putStringArray("arc$i", p.arcOpen.toTypedArray())
             outState.putInt("sort$i", p.sortBy.ordinal)
             outState.putBoolean("desc$i", p.sortDesc)
             outState.putInt("filter$i", p.filter.ordinal)
@@ -854,6 +858,11 @@ class MainActivity : Activity() {
             when {
                 // Marking mode: while something is marked here, a tap marks too (no accidental opening)
                 !e.up && p.selected.isNotEmpty() -> toggle(p, e.file)
+                !e.up && e.isDir && p.inArchive -> {
+                    val inner = Archive.split(e.file)?.second ?: return@setOnItemClickListener
+                    if (!p.arcOpen.remove(inner)) p.arcOpen.add(inner)
+                    loadPane(p)
+                }
                 e.up || e.isDir || Archive.isArchive(e.file) -> open(p, e.file)
                 p.inArchive -> openFromArchive(e.file)
                 else -> withLocal(listOf(e.file)) { openFile(it[0]) }
@@ -947,8 +956,18 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun open(p: Pane, dir: File) {
-        if (!Vfs.isVirtual(dir) && !Archive.inside(dir) && !dir.canRead()) return
+    private fun open(p: Pane, to: File) {
+        if (!Vfs.isVirtual(to) && !Archive.inside(to) && !to.canRead()) return
+        // An archive opens as a small tree of its folders and files; a path inside it unfolds up to there
+        val dir = Archive.split(to)?.let { (arc, inner) ->
+            if (Archive.split(p.dir)?.first?.path != arc.path) p.arcOpen.clear()
+            var cur = inner
+            while (cur.isNotEmpty()) {
+                p.arcOpen.add(cur)
+                cur = cur.substringBeforeLast('/', "")
+            }
+            arc
+        } ?: to
         p.dir = dir
         p.selected.clear()
         remember(dir)
@@ -968,6 +987,8 @@ class MainActivity : Activity() {
 
     /** Sort and filter of the in-memory list: no disk access. Folders always come first. */
     private fun viewOf(p: Pane): List<Entry> {
+        // Archive tree: its own order; a filter hides files only, so the folders keep the tree together
+        if (p.inArchive) return p.raw.filter { it.up || it.isDir || matches(it, p) }
         val cmp: Comparator<Entry> = when (p.sortBy) {
             SortBy.NAME -> compareBy<Entry> { it.key }
             SortBy.DATE -> compareBy<Entry> { it.modified }
@@ -1089,7 +1110,7 @@ class MainActivity : Activity() {
     private fun visible(name: String) = showHidden || !name.startsWith(".")
 
     /** File list of [dir]: one attribute call per entry, sorted once (folders first). Runs on the loader thread. */
-    private fun buildEntries(dir: File, showUp: Boolean): List<Entry> {
+    private fun buildEntries(dir: File, showUp: Boolean, arcOpen: Set<String> = emptySet()): List<Entry> {
         val out = ArrayList<Entry>()
         val df = DateFormat.getDateFormat(this)
         val tf = DateFormat.getTimeFormat(this)
@@ -1116,10 +1137,17 @@ class MainActivity : Activity() {
             }
             return e
         }
-        Archive.split(dir)?.let { (arc, inner) ->
-            if (showUp) dir.parentFile?.let { out.add(finish(Entry(it, true, isDir = true))) }
-            val items = Archive.children(arc, inner).filter { visible(it.name) }.map { finish(Entry(File(dir, it.name), false, it.isDir, it.size, it.modified)) }
-            out.addAll(items.sortedWith(compareBy({ !it.isDir }, { it.key })))
+        Archive.split(dir)?.let { (arc, _) ->
+            // The whole archive as a tree: folders first, unfolded ones followed by their contents
+            if (showUp) arc.parentFile?.let { out.add(finish(Entry(it, true, isDir = true))) }
+            fun add(inner: String, depth: Int) {
+                val items = Archive.children(arc, inner).filter { visible(it.name) }.sortedWith(compareBy({ !it.isDir }, { it.name.lowercase() }))
+                for (item in items) {
+                    out.add(finish(Entry(File(arc, item.path), false, item.isDir, item.size, item.modified, depth)).apply { width += dp(18) * depth })
+                    if (item.isDir && item.path in arcOpen) add(item.path, depth + 1)
+                }
+            }
+            add("", 0)
             return out
         }
         if (Vfs.isVirtual(dir)) {
@@ -1203,6 +1231,7 @@ class MainActivity : Activity() {
         val gen = ++p.gen
         val dir = p.dir
         val expanded = HashSet(p.expanded)
+        val arcOpen = HashSet(p.arcOpen)
         val favs = favorites().sorted()
         p.inArchive = Archive.inside(dir)
         updateCrumbs(p)
@@ -1218,7 +1247,7 @@ class MainActivity : Activity() {
             if (gen != p.gen) return@execute   // a newer folder was opened meanwhile
             val virtual = Vfs.isVirtual(dir) || Archive.inside(dir)
             val showUp = showUpRow && roots.none { it.path == dir.path } && (virtual && dir.parentFile != null || dir.parentFile?.canRead() == true)
-            val entries = buildEntries(dir, showUp)
+            val entries = buildEntries(dir, showUp, arcOpen)
             // The list first: the tree (one read per unfolded folder) follows
             runOnUiThread {
                 if (gen != p.gen || isFinishing) return@runOnUiThread
@@ -1491,7 +1520,7 @@ class MainActivity : Activity() {
         val dstDir = to ?: (if (src === panes[0]) panes[1] else panes[0]).dir
         val items = src.selected.toList()
         Archive.split(src.dir)?.let { (arc, inner) ->
-            if (which == 0) askExtract(arc, items.map { if (inner.isEmpty()) it.name else "$inner/${it.name}" })
+            if (which == 0) askExtract(arc, items.mapNotNull { Archive.split(it)?.second ?: if (inner.isEmpty()) it.name else "$inner/${it.name}" })
             else Toast.makeText(this, R.string.arc_readonly, Toast.LENGTH_SHORT).show()
             return
         }
@@ -2193,7 +2222,13 @@ class MainActivity : Activity() {
             row.iconHit.visibility = if (e.up) View.INVISIBLE else View.VISIBLE
             row.iconHit.setOnClickListener { toggle(p, f) }
 
-            row.name.text = if (e.up) getString(R.string.up) else f.name
+            // Archive tree: indented by level, folders show whether they are unfolded
+            row.setPadding(dp(18) * e.depth, 0, dp(14), 0)
+            row.name.text = when {
+                e.up -> getString(R.string.up)
+                p.inArchive && e.isDir -> (if ((Archive.split(f)?.second ?: "") in p.arcOpen) "▾ " else "▸ ") + f.name
+                else -> f.name
+            }
             row.name.setTextColor(getColor(R.color.md_on_surface))
             row.meta.setTextColor(getColor(R.color.md_on_surface_variant))
             row.meta.text = when {
