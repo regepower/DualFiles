@@ -94,7 +94,9 @@ private const val ERROR_COLOR_LIGHT = 0xFFFFB4AB.toInt()   // error text on the 
 private const val REQ_TREE = 1
 private const val REQ_SAVE = 2
 // Viewer settings that go into the configuration file
-private val VIEWER_KEYS = setOf("viewer_sp", "viewer_sp_hex", "viewer_numbers", "viewer_wrap", "viewer_hex_bytes", "viewer_hex_plain")
+private val VIEWER_KEYS = setOf(
+    "viewer_sp", "viewer_sp_hex", "viewer_numbers", "viewer_wrap", "viewer_hex_bytes", "viewer_hex_plain", "viewer_syntax", "viewer_md",
+)
 private const val REQ_LOAD = 3
 
 internal fun Context.dp(v: Int): Int = (v * resources.displayMetrics.density + 0.5f).toInt()

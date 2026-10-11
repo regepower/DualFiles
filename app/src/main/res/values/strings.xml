@@ -202,4 +202,6 @@
     <string name="viewer_label">DualFiles viewer</string>
     <string name="view_hex_bytes">%1$d bytes per row</string>
     <string name="view_hex_plain">Only letters, digits, space</string>
+    <string name="view_syntax">Syntax colours</string>
+    <string name="view_markdown">Show Markdown formatted</string>
 </resources>

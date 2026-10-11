@@ -32,6 +32,8 @@ internal class TextGrid(context: Context) : View(context) {
         fun label(i: Int): String = ""
         /** True when row [i + 1] continues row [i] (wrapped line): copied without a line break. */
         fun joinsNext(i: Int): Boolean = false
+        /** Coloured runs of row [i] as (start, end, colour) triples in order, or null for plain text. */
+        fun colors(i: Int, text: String): IntArray? = null
     }
 
     /** Characters reserved for line numbers at the left (0 = none). */
@@ -61,6 +63,7 @@ internal class TextGrid(context: Context) : View(context) {
     private val density = context.resources.displayMetrics.density
     private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.MONOSPACE }
     private val markPaint = Paint()
+    private val colorPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pad = 8 * density
     private var lineH = 0f
@@ -181,7 +184,28 @@ internal class TextGrid(context: Context) : View(context) {
                 val x2 = left() + paint.measureText(text, 0, max(from, to)) - sx + if (i != er) charW / 2 else 0f
                 canvas.drawRect(x1, y, max(x2, x1 + if (i != er) charW / 2 else 0f), y + lineH, markPaint)
             }
-            canvas.drawText(text, left() - sx, y + baseShift, paint)
+            val x0 = left() - sx
+            val yb = y + baseShift
+            val runs = src.colors(i, text)
+            if (runs == null || runs.isEmpty()) canvas.drawText(text, x0, yb, paint)
+            else {
+                // Plain parts in the text colour, coloured runs with their own (syntax colours)
+                colorPaint.set(paint)
+                var pos = 0
+                var k = 0
+                while (k + 2 < runs.size) {
+                    val s = runs[k].coerceIn(pos, text.length)
+                    val e = runs[k + 1].coerceIn(s, text.length)
+                    if (s > pos) canvas.drawText(text, pos, s, x0 + paint.measureText(text, 0, pos), yb, paint)
+                    if (e > s) {
+                        colorPaint.color = runs[k + 2]
+                        canvas.drawText(text, s, e, x0 + paint.measureText(text, 0, s), yb, colorPaint)
+                    }
+                    pos = e
+                    k += 3
+                }
+                if (pos < text.length) canvas.drawText(text, pos, text.length, x0 + paint.measureText(text, 0, pos), yb, paint)
+            }
         }
         if (gutterChars > 0) {
             // Line numbers stay in place when the text moves sideways

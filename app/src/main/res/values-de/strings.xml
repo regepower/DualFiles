@@ -195,4 +195,6 @@
     <string name="viewer_label">DualFiles-Betrachter</string>
     <string name="view_hex_bytes">%1$d Byte pro Zeile</string>
     <string name="view_hex_plain">Nur Buchstaben, Ziffern, Leerzeichen</string>
+    <string name="view_syntax">Syntax-Farben</string>
+    <string name="view_markdown">Markdown formatiert anzeigen</string>
 </resources>

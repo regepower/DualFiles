@@ -40,6 +40,14 @@ class ViewerActivity : Activity() {
     private var hex = false
     private var hexBytes = 8          // bytes per hex row: 4, 8 or 16 (setting)
     private var hexPlain = false      // character column: only a-z, A-Z, 0-9 and space (setting)
+    private var syntax = true         // syntax colours for known text formats (setting)
+    private var markdown = true       // Markdown files shown formatted (setting)
+    private var lang: Syntax.Lang? = null
+    private var palette = IntArray(6)
+    private lateinit var gridRow: View
+    private lateinit var mdScroll: android.widget.ScrollView
+    private lateinit var mdText: TextView
+    private var mdShownFor = false    // the formatted Markdown is built
     private var charset: Charset = Charsets.UTF_8
     private val blocks = LruCache<Long, ByteArray>(32)   // block start -> bytes; UI thread only
 
@@ -87,6 +95,7 @@ class ViewerActivity : Activity() {
         val head = bytes(0, 64 * 1024)
         hex = head.any { it == 0.toByte() }
         charset = if (isUtf8(head)) Charsets.UTF_8 else Charsets.ISO_8859_1
+        lang = Syntax.langFor(name)
         setContentView(build(name))
         // Android 13+: back comes through the dispatcher; it first removes a mark
         if (android.os.Build.VERSION.SDK_INT >= 33) {
@@ -209,6 +218,12 @@ class ViewerActivity : Activity() {
         numbers = prefs.getBoolean("viewer_numbers", false)
         hexBytes = prefs.getInt("viewer_hex_bytes", 8).takeIf { it in HEX_WIDTHS } ?: 8
         hexPlain = prefs.getBoolean("viewer_hex_plain", false)
+        syntax = prefs.getBoolean("viewer_syntax", true)
+        markdown = prefs.getBoolean("viewer_md", true)
+        // Keyword, string, number, comment, tag, key: readable on the dark and on the light surface
+        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        palette = if (night) intArrayOf(0xFFC792EA.toInt(), 0xFFA5D6A7.toInt(), 0xFFF78C6C.toInt(), 0xFF8A949E.toInt(), 0xFF82AAFF.toInt(), 0xFFFFCB6B.toInt())
+        else intArrayOf(0xFF7B1FA2.toInt(), 0xFF2E7D32.toInt(), 0xFFD84315.toInt(), 0xFF757575.toInt(), 0xFF1565C0.toInt(), 0xFF8D5E00.toInt())
         wrap = prefs.getBoolean("viewer_wrap", false)
         grid.onColumns = { if (wrap && !hex) rebuildWrap() }
         grid.onDoubleWord = { copySelection(false) }
@@ -237,6 +252,13 @@ class ViewerActivity : Activity() {
                 else -> (i + 1).toString()
             }
             override fun joinsNext(i: Int) = wrapping() && i + 1 < wrapCount && wrapRow[i + 1] == wrapRow[i]
+            override fun colors(i: Int, text: String): IntArray? {
+                val l = lang ?: return null
+                if (hex || !syntax) return null
+                val runs = Syntax.spans(l, text)
+                for (k in 2 until runs.size step 3) runs[k] = palette[runs[k]]
+                return runs
+            }
         }
         vBar = RangeBar(this)
         vBar.vertical = true
@@ -252,13 +274,46 @@ class ViewerActivity : Activity() {
         val row = LinearLayout(this)
         row.addView(grid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         row.addView(vBar, LinearLayout.LayoutParams(dp(14), ViewGroup.LayoutParams.MATCH_PARENT))
+        gridRow = row
         root.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(hBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(14)))
+        // Formatted Markdown (instead of the grid while it is shown)
+        mdText = TextView(this).apply {
+            setTextColor(getColor(R.color.md_on_surface))
+            textSize = 15f
+            setLineSpacing(0f, 1.15f)
+            setTextIsSelectable(true)
+            movementMethod = android.text.method.LinkMovementMethod.getInstance()
+            setPadding(dp(16), dp(8), dp(16), dp(24))
+        }
+        mdScroll = android.widget.ScrollView(this).apply { addView(mdText); visibility = View.GONE }
+        root.addView(mdScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         return root
+    }
+
+    /** Markdown shown formatted: .md files up to 2 MB, in text mode, setting on. */
+    private fun mdMode() = lang == Syntax.Lang.MD && markdown && !hex && size <= 2_000_000L
+
+    /** Reads the whole (small) file and formats it in the background. */
+    private fun buildMarkdown() {
+        if (mdShownFor) return
+        mdShownFor = true
+        mdText.text = "…"
+        val colors = Markdown.Colors(getColor(R.color.md_primary), getColor(R.color.md_on_surface_variant), palette[3] and 0x33FFFFFF, resources.displayMetrics.density)
+        Thread {
+            val text = String(bytes(0, size.toInt()), charset)
+            val shown = Markdown.render(text, colors)
+            main.post { if (!isFinishing) mdText.text = shown }
+        }.start()
     }
 
     /** Refreshes counts, width and labels after a mode change or new index data. */
     private fun show() {
+        val md = mdMode()
+        mdScroll.visibility = if (md) View.VISIBLE else View.GONE
+        gridRow.visibility = if (md) View.GONE else View.VISIBLE
+        hBar.visibility = if (md) View.GONE else View.VISIBLE
+        if (md) buildMarkdown()
         toggle.setText(if (hex) R.string.view_text else R.string.view_hex)
         grid.gutterChars = if (numbers && !hex) maxOf(2, rowCount.toString().length) else 0
         if (wrapping() && wrapBuiltFor != rowCount) rebuildWrap()
@@ -323,11 +378,22 @@ class ViewerActivity : Activity() {
         menu.menu.setGroupCheckable(1, true, true)
         menu.menu.findItem(10 + hexBytes)?.isChecked = true
         menu.menu.add(0, 3, 10, R.string.view_hex_plain).apply { isCheckable = true; isChecked = hexPlain; isEnabled = hex }
+        menu.menu.add(0, 4, 11, R.string.view_syntax).apply { isCheckable = true; isChecked = syntax; isEnabled = !hex && lang != null }
+        if (lang == Syntax.Lang.MD) menu.menu.add(0, 5, 12, R.string.view_markdown).apply { isCheckable = true; isChecked = markdown; isEnabled = !hex }
         menu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> {
                     numbers = !numbers
                     prefs.edit().putBoolean("viewer_numbers", numbers).apply()
+                }
+                4 -> {
+                    syntax = !syntax
+                    prefs.edit().putBoolean("viewer_syntax", syntax).apply()
+                    grid.refresh()
+                }
+                5 -> {
+                    markdown = !markdown
+                    prefs.edit().putBoolean("viewer_md", markdown).apply()
                 }
                 3 -> {
                     hexPlain = !hexPlain
