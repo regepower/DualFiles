@@ -248,8 +248,8 @@ internal class EntryIcon(
         val FILE = Path().apply {
             moveTo(0f, 0f); lineTo(32f, 0f); lineTo(48f, 16f); lineTo(48f, 56f); lineTo(0f, 56f); close()
         }
-        // App symbol on a file: as big as the sheet allows below the folded corner (36 of 48 units)
-        val BADGE = RectF(6f, 18f, 42f, 54f)
+        // App symbol on a file: 36 of 48 units, the same gap (6) left, right and below; clear of the fold
+        val BADGE = RectF(6f, 14f, 42f, 50f)
         val THUMB = Path().apply { addRoundRect(RectF(0f, 0f, 48f, 56f), 6f, 6f, Path.Direction.CW) }
         val FOLD = Path().apply {
             moveTo(32f, 0f); lineTo(32f, 16f); lineTo(48f, 16f); close()
