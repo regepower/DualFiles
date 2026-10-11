@@ -3,9 +3,13 @@ package de.regepower.dualfiles
 /**
  * "Natural" order for names: runs of digits compare by their number, so "IMG_9" comes before "IMG_10"
  * and "Datei2" before "Datei10". Letters compare as given (the callers pass lower-case keys).
+ * Switched off in the settings ([enabled] false): plain character order.
  */
 internal object Natural : Comparator<String> {
+    @Volatile var enabled = true   // read on the loader threads
+
     override fun compare(a: String, b: String): Int {
+        if (!enabled) return a.compareTo(b)
         var i = 0
         var j = 0
         while (i < a.length && j < b.length) {

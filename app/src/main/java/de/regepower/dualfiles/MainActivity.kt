@@ -508,6 +508,7 @@ class MainActivity : Activity() {
         showHidden = settings.getBoolean("hidden", false)
         showThumbs = settings.getBoolean("thumbs", true)
         showUpRow = settings.getBoolean("updir", true)
+        Natural.enabled = settings.getBoolean("natural", true)
 
         val root = FrameLayout(this)
         root.setBackgroundColor(getColor(R.color.md_surface))
@@ -2203,59 +2204,102 @@ class MainActivity : Activity() {
 
     // ---- Settings ----
 
+    /**
+     * Settings in groups: switches act at once (the sheet stays open), rows with "›" open their own
+     * dialog. Clearer than one long list of "show …/hide …" entries.
+     */
     private fun showSettings() {
-        val items = arrayOf(
-            getString(R.string.assoc_title),
-            getString(R.string.saf_add),
-            getString(R.string.saf_remove),
-            getString(R.string.cfg_save),
-            getString(R.string.cfg_load),
-            getString(if (showHidden) R.string.hidden_hide else R.string.hidden_show),
-            getString(if (showThumbs) R.string.thumbs_off else R.string.thumbs_on),
-            getString(R.string.report_title),
-            getString(if (showUpRow) R.string.updir_hide else R.string.updir_show),
-        )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.settings_title)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> showAssociations()
-                    1 -> pickTree()
-                    2 -> showRemoveSaf()
-                    3 -> startActivityForResult(
-                        Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-                            .setType("application/json").putExtra(Intent.EXTRA_TITLE, "DualFiles.json"),
-                        REQ_SAVE
-                    )
-                    4 -> startActivityForResult(
-                        Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json"),
-                        REQ_LOAD
-                    )
-                    5 -> {
-                        showHidden = !showHidden
-                        settings.edit().putBoolean("hidden", showHidden).apply()
-                        counts.clear()
-                        treeCounts.clear()
-                        refreshAll()
-                    }
-                    6 -> {
-                        showThumbs = !showThumbs
-                        settings.edit().putBoolean("thumbs", showThumbs).apply()
-                        if (!showThumbs) Thumbs.clear()
-                        for (p in panes) p.fileAdapter.notifyDataSetChanged()
-                    }
-                    8 -> {
-                        showUpRow = !showUpRow
-                        settings.edit().putBoolean("updir", showUpRow).apply()
-                        refreshAll()
-                    }
-                    7 -> Thread {
-                        val f = Report.build(this)
-                        runOnUiThread { viewFile(f) }
-                    }.start()
-                }
+        val col = LinearLayout(this)
+        col.orientation = LinearLayout.VERTICAL
+        col.setPadding(dp(8), dp(4), dp(8), dp(8))
+        lateinit var dialog: AlertDialog
+        fun section(title: Int) = col.addView(TextView(this).apply {
+            setText(title)
+            textSize = 12f
+            isAllCaps = true
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(panes[0].color)
+            setPadding(dp(16), dp(16), dp(16), dp(4))
+        })
+        fun switch(label: Int, on: Boolean, change: (Boolean) -> Unit) = col.addView(android.widget.Switch(this).apply {
+            setText(label)
+            textSize = 15f
+            isChecked = on
+            setTextColor(getColor(R.color.md_on_surface))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            setOnCheckedChangeListener { _, checked -> change(checked) }
+        })
+        fun item(label: Int, action: () -> Unit) = col.addView(TextView(this).apply {
+            text = getString(label) + "  ›"
+            textSize = 15f
+            setTextColor(getColor(R.color.md_on_surface))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            val sel = TypedValue()
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, sel, true)
+            setBackgroundResource(sel.resourceId)
+            setOnClickListener {
+                dialog.dismiss()
+                action()
             }
-            .setNegativeButton(R.string.cancel, null)
+        })
+
+        section(R.string.set_display)
+        switch(R.string.set_hidden, showHidden) {
+            showHidden = it
+            settings.edit().putBoolean("hidden", it).apply()
+            counts.clear()
+            treeCounts.clear()
+            refreshAll()
+        }
+        switch(R.string.set_thumbs, showThumbs) {
+            showThumbs = it
+            settings.edit().putBoolean("thumbs", it).apply()
+            if (!it) Thumbs.clear()
+            for (p in panes) p.fileAdapter.notifyDataSetChanged()
+        }
+        switch(R.string.set_updir, showUpRow) {
+            showUpRow = it
+            settings.edit().putBoolean("updir", it).apply()
+            refreshAll()
+        }
+        switch(R.string.set_natural, Natural.enabled) {
+            Natural.enabled = it
+            settings.edit().putBoolean("natural", it).apply()
+            refreshAll()
+        }
+        section(R.string.set_apps)
+        item(R.string.assoc_title) { showAssociations() }
+        section(R.string.set_storage)
+        item(R.string.saf_add) { pickTree() }
+        item(R.string.saf_remove) { showRemoveSaf() }
+        section(R.string.set_config)
+        item(R.string.cfg_save) {
+            startActivityForResult(
+                Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("application/json").putExtra(Intent.EXTRA_TITLE, "DualFiles.json"),
+                REQ_SAVE
+            )
+        }
+        item(R.string.cfg_load) {
+            startActivityForResult(
+                Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json"),
+                REQ_LOAD
+            )
+        }
+        section(R.string.set_problems)
+        item(R.string.report_title) {
+            Thread {
+                val f = Report.build(this)
+                runOnUiThread { viewFile(f) }
+            }.start()
+        }
+
+        val scroll = ScrollView(this)
+        scroll.addView(col)
+        dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.settings_title)
+            .setView(scroll)
+            .setPositiveButton(R.string.done, null)
             .show()
     }
 
@@ -2313,7 +2357,7 @@ class MainActivity : Activity() {
         for ((k, v) in settings.all) if (k in VIEWER_KEYS && v != null) viewer.put(k, v)
         return JSONObject().put("app", packageName).put("format", 1).put("assoc", assoc)
             .put("favs", org.json.JSONArray(favorites().sorted())).put("hidden", showHidden).put("thumbs", showThumbs)
-            .put("updir", showUpRow).put("viewer", viewer).toString(2)
+            .put("updir", showUpRow).put("natural", Natural.enabled).put("viewer", viewer).toString(2)
     }
 
     /** Replaces the app choices with the ones in [text]. Throws if it is not one of our files. */
@@ -2338,6 +2382,10 @@ class MainActivity : Activity() {
         if (o.has("updir")) {
             showUpRow = o.getBoolean("updir")
             settings.edit().putBoolean("updir", showUpRow).apply()
+        }
+        if (o.has("natural")) {
+            Natural.enabled = o.getBoolean("natural")
+            settings.edit().putBoolean("natural", Natural.enabled).apply()
         }
         o.optJSONObject("viewer")?.let { v ->
             val e = settings.edit()

@@ -62,10 +62,6 @@
     <string name="op_failed">Hat nicht geklappt</string>
     <string name="fav_add">Zu Favoriten</string>
     <string name="fav_remove">Aus Favoriten entfernen</string>
-    <string name="hidden_show">Versteckte Dateien zeigen</string>
-    <string name="hidden_hide">Versteckte Dateien ausblenden</string>
-    <string name="thumbs_on">Vorschaubilder von Bildern und Videos zeigen</string>
-    <string name="thumbs_off">Vorschaubilder ausblenden</string>
     <string name="arc_extract">Entpacken zum Ziel</string>
     <string name="arc_zip">Als ZIP packen zum Ziel</string>
     <string name="arc_default">Archiv</string>
@@ -186,8 +182,6 @@
     <string name="menu_to">Ziel wählen</string>
     <string name="unpack_short">Entpacken</string>
     <string name="view_short">Anzeigen</string>
-    <string name="updir_hide">\"..\"-Zeile ausblenden</string>
-    <string name="updir_show">\"..\"-Zeile zeigen</string>
     <string name="filter_archives">Archive</string>
     <string name="filter_apks">APKs</string>
     <string name="arc_extract_zip">Als ZIP entpacken</string>
@@ -197,4 +191,13 @@
     <string name="view_hex_plain">Nur Buchstaben, Ziffern, Leerzeichen</string>
     <string name="view_syntax">Syntax-Farben</string>
     <string name="view_markdown">Markdown formatiert anzeigen</string>
+    <string name="set_display">Anzeige</string>
+    <string name="set_apps">Apps</string>
+    <string name="set_storage">Speicher</string>
+    <string name="set_config">Konfiguration</string>
+    <string name="set_problems">Fehler</string>
+    <string name="set_hidden">Versteckte Dateien zeigen</string>
+    <string name="set_thumbs">Vorschaubilder (Bilder, Videos, Musik-Cover)</string>
+    <string name="set_updir">\"..\"-Zeile zeigen</string>
+    <string name="set_natural">Zahlen natürlich sortieren (2 vor 10)</string>
 </resources>

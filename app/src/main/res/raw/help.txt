@@ -23,7 +23,7 @@ View (text/hex) opens even very large files at once; as "DualFiles viewer" it is
 If a name already exists in the target, the app asks: overwrite (folders are merged), skip or keep both ("name (1)"), optionally for all. Copy, move, delete, pack and unpack show their progress and can be cancelled; a half-copied file is removed. Afterwards the app says what was done (e.g. "3 items copied to Download").
 
 # Settings
-⋮ top right → Settings: fixed app per file type (change or delete), add or remove cloud folders, show hidden files, previews on/off, show/hide the ".." row, save and load the configuration (app choices, favourites, settings including viewer zoom and options), error report (last crash or hang, to copy or share).
+⋮ top right → Settings, in groups: Display (switches for hidden files, previews including music covers, the ".." row, natural number order 2 before 10 – take effect at once), Apps (fixed app per file type, change or delete), Storage (add or remove cloud folders), Configuration (save and load: app choices, favourites, settings including viewer zoom and options), Problems (error report: last crash or hang, to copy or share).
 
 # Access and privacy
 The app needs "all files access"; the system setting opens on first start. No data is collected or sent. The app only goes online to servers you added yourself.

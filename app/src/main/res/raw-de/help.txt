@@ -23,7 +23,7 @@ Anzeigen (Text/Hex) öffnet auch sehr große Dateien sofort; als „DualFiles-Be
 Gibt es einen Namen im Ziel schon, fragt die App: Überschreiben (Ordner werden zusammengeführt), Überspringen oder Beide behalten ("Name (1)"), auf Wunsch für alle. Kopieren, Verschieben, Löschen, Packen und Entpacken zeigen den Fortschritt und lassen sich abbrechen; eine halb kopierte Datei wird entfernt. Danach meldet die App, was getan wurde (z. B. "3 Elemente nach „Download“ kopiert").
 
 # Einstellungen
-⋮ oben rechts → Einstellungen: feste App je Dateityp (ändern oder löschen), Cloud-Ordner hinzufügen oder entfernen, versteckte Dateien zeigen, Vorschaubilder an/aus, ".."-Zeile zeigen/ausblenden, Konfiguration speichern und laden (App-Zuordnungen, Favoriten, Einstellungen samt Betrachter-Zoom und -Optionen), Fehlerbericht (letzter Absturz oder Hänger, zum Kopieren oder Teilen).
+⋮ oben rechts → Einstellungen, in Gruppen: Anzeige (Schalter für versteckte Dateien, Vorschaubilder samt Musik-Cover, ".."-Zeile, natürliche Zahlen-Sortierung 2 vor 10 – wirken sofort), Apps (feste App je Dateityp ändern oder löschen), Speicher (Cloud-Ordner hinzufügen oder entfernen), Konfiguration (speichern und laden: App-Zuordnungen, Favoriten, Einstellungen samt Betrachter-Zoom und -Optionen), Fehler (Fehlerbericht: letzter Absturz oder Hänger, zum Kopieren oder Teilen).
 
 # Zugriff und Datenschutz
 Die App braucht "Zugriff auf alle Dateien"; beim ersten Start öffnet sich die Systemeinstellung. Es werden keine Daten gesammelt oder gesendet. Ins Netz geht die App nur zu Servern, die du selbst eingetragen hast.

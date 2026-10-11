@@ -67,10 +67,6 @@
     <string name="op_failed">Did not work</string>
     <string name="fav_add">Add to favourites</string>
     <string name="fav_remove">Remove from favourites</string>
-    <string name="hidden_show">Show hidden files</string>
-    <string name="hidden_hide">Hide hidden files</string>
-    <string name="thumbs_on">Show previews of pictures and videos</string>
-    <string name="thumbs_off">Hide previews of pictures and videos</string>
     <string name="arc_extract">Unpack to target</string>
     <string name="arc_zip">Pack as ZIP to target</string>
     <string name="arc_default">Archive</string>
@@ -193,8 +189,6 @@
     <string name="menu_to">Destination</string>
     <string name="unpack_short">Unpack</string>
     <string name="view_short">View</string>
-    <string name="updir_hide">Hide the \"..\" row</string>
-    <string name="updir_show">Show the \"..\" row</string>
     <string name="filter_archives">Archives</string>
     <string name="filter_apks">APKs</string>
     <string name="arc_extract_zip">Unpack as ZIP</string>
@@ -204,4 +198,13 @@
     <string name="view_hex_plain">Only letters, digits, space</string>
     <string name="view_syntax">Syntax colours</string>
     <string name="view_markdown">Show Markdown formatted</string>
+    <string name="set_display">Display</string>
+    <string name="set_apps">Apps</string>
+    <string name="set_storage">Storage</string>
+    <string name="set_config">Configuration</string>
+    <string name="set_problems">Problems</string>
+    <string name="set_hidden">Show hidden files</string>
+    <string name="set_thumbs">Previews (pictures, videos, music covers)</string>
+    <string name="set_updir">Show the \"..\" row</string>
+    <string name="set_natural">Sort numbers naturally (2 before 10)</string>
 </resources>
