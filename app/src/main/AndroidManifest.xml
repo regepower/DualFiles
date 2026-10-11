@@ -34,10 +34,33 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- "Open with DualFiles" for ZIP and 7z archives: shown as a tree in the source list. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/x-7z-compressed" />
+            </intent-filter>
         </activity>
+        <!-- Text/hex viewer, also offered to other apps for text and unknown file types (not for pictures, videos, PDF). -->
         <activity
             android:name=".ViewerActivity"
-            android:exported="false" />
+            android:exported="true"
+            android:label="@string/viewer_label">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/xml" />
+                <data android:mimeType="application/javascript" />
+                <data android:mimeType="application/x-sh" />
+                <data android:mimeType="application/x-yaml" />
+                <data android:mimeType="application/x-subrip" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
         <!-- Receives the app picked in the chooser so it is remembered per file type. -->
         <receiver
             android:name=".ChooserReceiver"

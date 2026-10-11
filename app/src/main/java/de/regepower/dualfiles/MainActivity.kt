@@ -21,6 +21,8 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.SystemClock
 import android.os.storage.StorageManager
+import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.text.TextUtils
 import android.text.format.DateFormat
@@ -458,6 +460,59 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) { handleBack() }
         }
+        if (savedInstanceState == null) openFromOtherApp(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openFromOtherApp(intent)
+    }
+
+    /** "Open with DualFiles" for a ZIP/7z from another app: the archive opens as a tree in the source list. */
+    private fun openFromOtherApp(i: Intent?) {
+        val uri = i?.takeIf { it.action == Intent.ACTION_VIEW }?.data ?: return
+        val p = panes[0]
+        var local: File? = null
+        runArchive(R.string.arc_opening, quiet = true, then = {
+            local?.let {
+                open(p, it)
+                pager.post { pager.snapTo(p.filePage) }
+            }
+        }) { _ ->
+            local = try {
+                localArchive(uri, i.type)
+            } catch (e: Exception) {
+                null
+            }
+            Archive.Result(if (local == null) R.string.arc_read else null)
+        }
+    }
+
+    /** The archive as a readable file: its real path if the sending app reveals one, else a copy in the cache. */
+    private fun localArchive(uri: Uri, mime: String?): File? {
+        if (uri.scheme == "file") return uri.path?.let { File(it) }?.takeIf { it.canRead() }
+        try {
+            @Suppress("DEPRECATION")
+            contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0)?.let { File(it) }?.takeIf { it.canRead() && Archive.isArchiveName(it) }?.let { return it }
+            }
+        } catch (e: Exception) {
+            // no path column: copy below
+        }
+        var name = try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        } catch (e: Exception) {
+            null
+        } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "archive"
+        if (!Archive.isArchiveName(File(name))) name += if (mime?.contains("7z") == true) ".7z" else ".zip"
+        val dir = File(cacheDir, "opened").apply { deleteRecursively(); mkdirs() }
+        val out = File(dir, name.replace('/', '_'))
+        val input = contentResolver.openInputStream(uri) ?: return null
+        input.use { inp -> out.outputStream().use { inp.copyTo(it) } }
+        return out
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -967,7 +1022,9 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun open(p: Pane, to: File, unfold: Boolean = true) {
+    private fun open(p: Pane, target: File, unfold: Boolean = true) {
+        // Leaving a copy of an archive opened from another app (it lies in the cache): back to the storage
+        val to = if (target.path.startsWith(cacheDir.path) && !Archive.inside(target)) roots.firstOrNull() ?: return else target
         if (!Vfs.isVirtual(to) && !Archive.inside(to) && !to.canRead()) return
         // An archive opens as a small tree of its folders and files; a path inside it unfolds up to there
         val dir = Archive.split(to)?.let { (arc, inner) ->

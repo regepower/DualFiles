@@ -2,6 +2,7 @@ package de.regepower.dualfiles
 
 import android.app.Activity
 import android.graphics.Typeface
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -58,9 +59,11 @@ class ViewerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val path = intent.getStringExtra(EXTRA_PATH)
-        val uri = intent.getStringExtra(EXTRA_URI)
-        val name = intent.getStringExtra(EXTRA_NAME) ?: path?.let { File(it).name } ?: ""
+        // From the app (extras) or "Open with" in another app (ACTION_VIEW with a content or file uri)
+        val data = if (intent.action == Intent.ACTION_VIEW) intent.data else null
+        val path = intent.getStringExtra(EXTRA_PATH) ?: data?.takeIf { it.scheme == "file" }?.path
+        val uri = intent.getStringExtra(EXTRA_URI) ?: data?.takeIf { it.scheme != "file" }?.toString()
+        val name = intent.getStringExtra(EXTRA_NAME) ?: path?.let { File(it).name } ?: data?.let { displayName(it) } ?: ""
         try {
             if (uri != null) {
                 val pfd = contentResolver.openFileDescriptor(Uri.parse(uri), "r") ?: throw IOException()
@@ -92,6 +95,15 @@ class ViewerActivity : Activity() {
         Thread { index() }.start()
         show()
     }
+
+    /** Name of a file handed over by another app, for the title. */
+    private fun displayName(uri: Uri): String = try {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    } catch (e: Exception) {
+        null
+    } ?: uri.lastPathSegment?.substringAfterLast('/') ?: ""
 
     override fun onDestroy() {
         stop = true
