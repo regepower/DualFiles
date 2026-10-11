@@ -275,14 +275,19 @@ internal class EntryIcon(
 internal class AppBadge(val bitmap: Bitmap, val mono: Boolean)
 
 /**
- * Symbol of the app set for a file type. Tried in order, of the opening activity's icon, then the app icon:
- * the monochrome layer (Android 13+, made for this); the foreground or the whole icon as a silhouette, but
- * only if the shape says something (a filled blob, e.g. a multicoloured flower, does not); else the app's
- * colour icon. null = show the extension.
+ * Symbol of the app set for a file type, as a single-colour symbol in our file icon whenever possible.
+ * Tried in order, of the opening activity's icon, then the app icon:
+ * 1. the monochrome layer (Android 13+, made for exactly this);
+ * 2. the outline of the foreground (or of an old-style icon), if the shape says something;
+ * 3. the logo on its plate: pixels clearly different in colour from the plate's edge (e.g. the coloured
+ *    Drive triangle on a white disc), from the foreground and then from the whole icon;
+ * 4. only if all of that is a meaningless blob (e.g. a multicoloured flower): the app's colour icon.
+ * null = show the extension.
  */
 internal object AppBadges {
     private const val SIZE = 48
-    private const val BLOB = 0.62f   // share of its own bounds a shape may fill and still be recognisable
+    private const val BIG = SIZE * 2   // drawn larger, then cut to the shape and scaled down
+    private const val BLOB = 0.62f     // share of its own bounds a shape may fill and still be recognisable
     private val cache = HashMap<String, AppBadge?>()   // UI thread only
 
     fun get(context: Context, cn: android.content.ComponentName): AppBadge? =
@@ -297,11 +302,15 @@ internal object AppBadges {
         )
         for (icon in icons) {
             val mono = if (icon is AdaptiveIconDrawable && Build.VERSION.SDK_INT >= 33) icon.monochrome else null
-            mono?.let { silhouette(it, 1f) }?.let { return AppBadge(it, true) }
+            mono?.let { pixels(it) }?.let { shape(alphaOf(it), 1f, 0.03f) }?.let { return AppBadge(it, true) }
         }
         for (icon in icons) {
-            val shape = if (icon is AdaptiveIconDrawable) icon.foreground else icon
-            shape?.let { silhouette(it, BLOB) }?.let { return AppBadge(it, true) }
+            val layers = if (icon is AdaptiveIconDrawable) listOfNotNull(icon.foreground, icon) else listOf(icon)
+            for (layer in layers) {
+                val px = pixels(layer) ?: continue
+                if (layer !is AdaptiveIconDrawable) shape(alphaOf(px), BLOB, 0.03f)?.let { return AppBadge(it, true) }
+                detail(px)?.let { shape(it, BLOB, 0.01f) }?.let { return AppBadge(it, true) }
+            }
         }
         return icons.firstOrNull()?.let { colour(it) }?.let { AppBadge(it, false) }
     }
@@ -316,54 +325,91 @@ internal object AppBadges {
         null
     }
 
-    /**
-     * The shape of [src] in white, or null if it is empty, a filled square, or fills more than [maxFill] of
-     * its own bounds. Icon layers have a lot of empty margin (the launcher's safe zone), so the shape is
-     * cut to its own bounds and scaled up: every badge fills the same space on the file icon.
-     */
-    private fun silhouette(src: Drawable, maxFill: Float): Bitmap? = try {
-        val big = SIZE * 2
-        val bmp = Bitmap.createBitmap(big, big, Bitmap.Config.ARGB_8888)
-        src.setBounds(0, 0, big, big)
+    /** [src] drawn at BIG x BIG, as ARGB pixels. */
+    private fun pixels(src: Drawable): IntArray? = try {
+        val bmp = Bitmap.createBitmap(BIG, BIG, Bitmap.Config.ARGB_8888)
+        src.setBounds(0, 0, BIG, BIG)
         src.draw(Canvas(bmp))
-        val px = IntArray(big * big)
-        bmp.getPixels(px, 0, big, 0, 0, big, big)
+        IntArray(BIG * BIG).also { bmp.getPixels(it, 0, BIG, 0, 0, BIG, BIG); bmp.recycle() }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun alphaOf(px: IntArray) = IntArray(px.size) { px[it] ushr 24 }
+
+    /**
+     * Logo on a plate: the opaque pixels whose colour clearly differs from the average colour of the shape's
+     * edge (the plate). A shape without a plain edge (e.g. multicoloured petals) gives a muddy average and
+     * nearly everything differs: that blob is then rejected by [shape].
+     */
+    private fun detail(px: IntArray): IntArray? {
+        fun solid(i: Int) = px[i] ushr 24 > 128
+        var r = 0L
+        var g = 0L
+        var b = 0L
+        var n = 0
+        for (y in 0 until BIG) for (x in 0 until BIG) {
+            val i = y * BIG + x
+            if (!solid(i)) continue
+            val edge = x == 0 || y == 0 || x == BIG - 1 || y == BIG - 1 ||
+                !solid(i - 1) || !solid(i + 1) || !solid(i - BIG) || !solid(i + BIG)
+            if (edge) {
+                r += (px[i] shr 16) and 0xFF
+                g += (px[i] shr 8) and 0xFF
+                b += px[i] and 0xFF
+                n++
+            }
+        }
+        if (n == 0) return null
+        val pr = (r / n).toInt()
+        val pg = (g / n).toInt()
+        val pb = (b / n).toInt()
+        return IntArray(px.size) { i ->
+            val c = px[i]
+            val d = abs(((c shr 16) and 0xFF) - pr) + abs(((c shr 8) and 0xFF) - pg) + abs((c and 0xFF) - pb)
+            if (solid(i) && d > 120) 255 else 0
+        }
+    }
+
+    /**
+     * White shape from per-pixel [alpha] (BIG x BIG), or null if it covers less than [minShare] or more than
+     * 80 % of the picture, or more than [maxFill] of its own bounds (a filled blob). Icon layers have a lot of
+     * empty margin (the launcher's safe zone), so the shape is cut to its own bounds and scaled up: every
+     * badge fills the same space on the file icon.
+     */
+    private fun shape(alpha: IntArray, maxFill: Float, minShare: Float): Bitmap? {
         var solid = 0
-        var left = big
-        var top = big
+        var left = BIG
+        var top = BIG
         var right = -1
         var bottom = -1
-        for (i in px.indices) {
-            val a = px[i] ushr 24
+        for (i in alpha.indices) {
+            val a = alpha[i]
             if (a > 128) solid++
             if (a > 40) {
-                val x = i % big
-                val y = i / big
+                val x = i % BIG
+                val y = i / BIG
                 if (x < left) left = x
                 if (x > right) right = x
                 if (y < top) top = y
                 if (y > bottom) bottom = y
             }
-            px[i] = (a shl 24) or 0xFFFFFF
         }
-        val share = solid.toFloat() / px.size
-        val boxShare = if (right < left) 1f else solid.toFloat() / ((right - left + 1) * (bottom - top + 1))
-        if (share < 0.03f || share > 0.8f || right < left || boxShare > maxFill) null
-        else {
-            bmp.setPixels(px, 0, big, 0, 0, big, big)
-            // Square around the shape, centred, with a little air
-            val side = (max(right - left, bottom - top) + 1) * 1.08f
-            val cx = (left + right + 1) / 2f
-            val cy = (top + bottom + 1) / 2f
-            val out = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
-            Canvas(out).drawBitmap(
-                bmp, android.graphics.Rect((cx - side / 2).roundToInt(), (cy - side / 2).roundToInt(), (cx + side / 2).roundToInt(), (cy + side / 2).roundToInt()),
-                RectF(0f, 0f, SIZE.toFloat(), SIZE.toFloat()), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
-            )
-            bmp.recycle()
-            out
-        }
-    } catch (e: Exception) {
-        null
+        if (right < left) return null
+        val share = solid.toFloat() / alpha.size
+        val boxShare = solid.toFloat() / ((right - left + 1) * (bottom - top + 1))
+        if (share < minShare || share > 0.8f || boxShare > maxFill) return null
+        val bmp = Bitmap.createBitmap(IntArray(alpha.size) { (alpha[it] shl 24) or 0xFFFFFF }, BIG, BIG, Bitmap.Config.ARGB_8888)
+        // Square around the shape, centred, with a little air
+        val side = (max(right - left, bottom - top) + 1) * 1.08f
+        val cx = (left + right + 1) / 2f
+        val cy = (top + bottom + 1) / 2f
+        val out = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+        Canvas(out).drawBitmap(
+            bmp, android.graphics.Rect((cx - side / 2).roundToInt(), (cy - side / 2).roundToInt(), (cx + side / 2).roundToInt(), (cy + side / 2).roundToInt()),
+            RectF(0f, 0f, SIZE.toFloat(), SIZE.toFloat()), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+        )
+        bmp.recycle()
+        return out
     }
 }
