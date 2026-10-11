@@ -287,7 +287,9 @@ internal class AppBadge(val bitmap: Bitmap, val mono: Boolean)
 internal object AppBadges {
     private const val SIZE = 48
     private const val BIG = SIZE * 2   // drawn larger, then cut to the shape and scaled down
-    private const val BLOB = 0.62f     // share of its own bounds a shape may fill and still be recognisable
+    // Share of its own bounds a shape may fill and still be recognisable: a triangle or a letter (~0.5–0.7)
+    // passes, a disc (0.79) or a rounded square (~0.95) does not
+    private const val BLOB = 0.72f
     private val cache = HashMap<String, AppBadge?>()   // UI thread only
 
     fun get(context: Context, cn: android.content.ComponentName): AppBadge? =
@@ -339,8 +341,8 @@ internal object AppBadges {
 
     /**
      * Logo on a plate: the opaque pixels whose colour clearly differs from the average colour of the shape's
-     * edge (the plate). A shape without a plain edge (e.g. multicoloured petals) gives a muddy average and
-     * nearly everything differs: that blob is then rejected by [shape].
+     * edge (the plate). A shape without a plain one-coloured edge (e.g. multicoloured petals, the Drive
+     * triangle itself) gives null.
      */
     private fun detail(px: IntArray): IntArray? {
         fun solid(i: Int) = px[i] ushr 24 > 128
@@ -364,6 +366,16 @@ internal object AppBadges {
         val pr = (r / n).toInt()
         val pg = (g / n).toInt()
         val pb = (b / n).toInt()
+        // Only a real plate has one colour all round its edge; a multicoloured edge gives no symbol
+        var dev = 0L
+        for (y in 0 until BIG) for (x in 0 until BIG) {
+            val i = y * BIG + x
+            if (!solid(i)) continue
+            val edge = x == 0 || y == 0 || x == BIG - 1 || y == BIG - 1 ||
+                !solid(i - 1) || !solid(i + 1) || !solid(i - BIG) || !solid(i + BIG)
+            if (edge) dev += abs(((px[i] shr 16) and 0xFF) - pr) + abs(((px[i] shr 8) and 0xFF) - pg) + abs((px[i] and 0xFF) - pb)
+        }
+        if (dev / n > 60) return null
         return IntArray(px.size) { i ->
             val c = px[i]
             val d = abs(((c shr 16) and 0xFF) - pr) + abs(((c shr 8) and 0xFF) - pg) + abs((c and 0xFF) - pb)

@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -33,9 +34,7 @@ import android.text.SpannableStringBuilder
 import android.text.TextPaint
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
-import android.text.style.DynamicDrawableSpan
 import android.text.style.ForegroundColorSpan
-import android.text.style.ImageSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.TabStopSpan
 import android.util.TypedValue
@@ -69,6 +68,27 @@ import java.util.concurrent.Executors
 
 // Folder icons are yellow like in Windows; the two panes take the Material You primary and tertiary colours.
 private const val FOLDER_YELLOW = 0xFFFFC83D.toInt()
+private const val COUNT_SCALE = 0.75f   // size of the folder/file counts in the tree, relative to the name
+
+/**
+ * Small symbol after a count in the tree, centred on the digits of the smaller count text (an ImageSpan
+ * centres on the whole line, i.e. on the larger name, and sat too high).
+ */
+private class CountIcon(private val icon: android.graphics.drawable.Drawable, private val scale: Float) : android.text.style.ReplacementSpan() {
+    private fun side(p: Paint) = p.textSize * scale * 0.85f
+
+    override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?) =
+        (paint.textSize * scale * 0.2f + side(paint)).toInt()
+
+    override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+        val s = side(paint)
+        // Digits are about 0.72 em high: their middle lies 0.36 em of the small text above the baseline
+        val cy = y - paint.textSize * scale * 0.36f
+        val left = x + paint.textSize * scale * 0.2f
+        icon.setBounds(left.toInt(), (cy - s / 2).toInt(), (left + s).toInt(), (cy + s / 2).toInt())
+        icon.draw(canvas)
+    }
+}
 private const val ERROR_COLOR_LIGHT = 0xFFFFB4AB.toInt()   // error text on the dark container
 private const val REQ_TREE = 1
 private const val REQ_SAVE = 2
@@ -1434,10 +1454,7 @@ class MainActivity : Activity() {
     /** Small folder / file symbols for the counts in the tree, in the faint count colour. */
     private val countIcons by lazy {
         val faint = getColor(R.color.md_on_surface_variant).let { Color.argb(0xA0, Color.red(it), Color.green(it), Color.blue(it)) }
-        val size = (15f * 0.75f * resources.displayMetrics.scaledDensity).toInt()
-        listOf(R.drawable.ic_count_dir, R.drawable.ic_count_file).map { res ->
-            { getDrawable(res)!!.mutate().apply { setTint(faint); setBounds(0, 0, size, size) } }
-        }
+        listOf(R.drawable.ic_count_dir, R.drawable.ic_count_file).map { getDrawable(it)!!.mutate().apply { setTint(faint) } }
     }
 
     /** Item count of a folder: null while it is being counted on the counter thread. */
@@ -2316,19 +2333,24 @@ class MainActivity : Activity() {
             // Number of entries after the name (counted in the background), so empty folders are seen at once;
             // not for network folders (one server request each)
             val count = if (Net.isNet(n.file)) null else dirFileCount(n.file.path)
-            // "3 [folder]   12 [file]", smaller and fainter than the name, so it does not read as part of it
-            row.label.text = if (count == null) n.label else SpannableStringBuilder(n.label).apply {
+            // "3 [folder] • 12 [file]", smaller and fainter than the name so it does not read as part of it;
+            // a count of 0 is left out (nothing at all for an empty folder)
+            val parts = count?.let { c -> (0..1).filter { c[it] > 0 } }.orEmpty()
+            row.label.text = if (count == null || parts.isEmpty()) n.label else SpannableStringBuilder(n.label).apply {
                 val faint = getColor(R.color.md_on_surface_variant).let { Color.argb(0xA0, Color.red(it), Color.green(it), Color.blue(it)) }
-                for (k in 0..1) {
-                    append(if (k == 0) "   " else "    ")
+                fun small(t: String) {
                     val start = length
-                    append(count[k].toString())
-                    setSpan(RelativeSizeSpan(0.75f), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    append(t)
+                    setSpan(RelativeSizeSpan(COUNT_SCALE), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     setSpan(ForegroundColorSpan(faint), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    append(" ")
+                }
+                append("   ")
+                for ((j, k) in parts.withIndex()) {
+                    if (j > 0) small("  •  ")
+                    small(count[k].toString())
                     val at = length
                     append("\u00A0")
-                    setSpan(ImageSpan(countIcons[k](), DynamicDrawableSpan.ALIGN_CENTER), at, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    setSpan(CountIcon(countIcons[k], COUNT_SCALE), at, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
             }
             row.label.setTextColor(getColor(R.color.md_on_surface))
