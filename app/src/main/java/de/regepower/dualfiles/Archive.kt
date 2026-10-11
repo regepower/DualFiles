@@ -31,6 +31,15 @@ internal object NativeLib {
      */
     @JvmStatic external fun listDir(path: String, withStat: Boolean): Array<Any>?
 
+    /**
+     * Copies the file [src] to [dst] in the kernel (copy_file_range, else sendfile, else 1 MB read/write),
+     * progress every 4 MB. 0 = done, -1 = error, -2 = cancelled (the partial [dst] is removed).
+     */
+    @JvmStatic external fun copyFile(src: String, dst: String, progress: ArcProgress): Int
+
+    /** { bytes of all files, entries including [path] } of a file or folder tree (up to 4 threads); null on error. */
+    @JvmStatic external fun treeSize(path: String): LongArray?
+
     /** EXIF (TIFF block) of a JPEG with the orientation set to normal, or null. */
     @JvmStatic external fun jpegExif(path: String): ByteArray?
 

@@ -16,7 +16,7 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /**
- * Preview pictures of images and videos for the file list. The folder opens at once with the normal
+ * Preview pictures of images and videos (and the covers inside music files) for the file list. The folder opens at once with the normal
  * icons; previews are made in the background only for rows that are shown and replace the icons as they
  * come. Speed: the system's own cached previews (MediaStore) are used where they exist, several cores
  * work in parallel, the newest request goes first (the rows you look at) and requests for rows that
@@ -38,13 +38,13 @@ internal object Thumbs {
     }
     private val pending = java.util.concurrent.ConcurrentHashMap<String, Long>()   // key -> last time a row asked (read by the workers)
     private val failed = HashSet<String>()          // UI thread only
-    private val mediaIds = HashMap<String, Map<String, Pair<Long, Boolean>>>()   // folder -> path -> (id, video); guarded by itself
+    private val mediaIds = HashMap<String, Map<String, Pair<Long, Int>>>()   // folder -> path -> (id, media type); guarded by itself
     private var redraw: (() -> Unit)? = null        // UI thread only
 
     /** True for files that can have a preview. */
     fun canPreview(f: File): Boolean {
         val mime = FileOps.mime(f) ?: return false
-        return mime.startsWith("image/") || mime.startsWith("video/")
+        return mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("audio/")
     }
 
     /**
@@ -100,15 +100,19 @@ internal object Thumbs {
             return ctx.contentResolver.loadThumbnail(uri, size, null)
         }
         val mime = FileOps.mime(f) ?: return null
-        return if (mime.startsWith("video/")) ThumbnailUtils.createVideoThumbnail(f, size, null)
-        else ThumbnailUtils.createImageThumbnail(f, size, null)
+        return when {
+            mime.startsWith("video/") -> ThumbnailUtils.createVideoThumbnail(f, size, null)
+            // The cover picture inside the file (ID3, MP4, FLAC, Vorbis); no cover = no preview
+            mime.startsWith("audio/") -> ThumbnailUtils.createAudioThumbnail(f, size, null)
+            else -> ThumbnailUtils.createImageThumbnail(f, size, null)
+        }
     }
 
     /** The system's cached preview of a local picture or video, found by path (one query per folder). */
     private fun mediaThumb(ctx: Context, f: File, size: Size): Bitmap? {
         val dir = f.parent ?: return null
         val ids = synchronized(mediaIds) { mediaIds[dir] } ?: run {
-            val map = HashMap<String, Pair<Long, Boolean>>()
+            val map = HashMap<String, Pair<Long, Int>>()
             try {
                 @Suppress("DEPRECATION")
                 val data = MediaStore.MediaColumns.DATA
@@ -119,8 +123,10 @@ internal object Thumbs {
                 )?.use { c ->
                     while (c.moveToNext()) {
                         val type = c.getInt(2)
-                        if (type == MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE || type == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
-                            map[c.getString(1)] = Pair(c.getLong(0), type == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO)
+                        if (type == MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE || type == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO ||
+                            type == MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO
+                        ) {
+                            map[c.getString(1)] = Pair(c.getLong(0), type)
                         }
                     }
                 }
@@ -130,8 +136,12 @@ internal object Thumbs {
             synchronized(mediaIds) { mediaIds[dir] = map }
             map
         }
-        val (id, video) = ids[f.path] ?: return null
-        val base = if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val (id, type) = ids[f.path] ?: return null
+        val base = when (type) {
+            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI   // album art
+            else -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
         return try {
             ctx.contentResolver.loadThumbnail(ContentUris.withAppendedId(base, id), size, null)
         } catch (e: Exception) {

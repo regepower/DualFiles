@@ -40,7 +40,7 @@ internal class Meter(private val listener: ArcProgress) {
                 i.copyTo(o)
                 return
             }
-            val buf = ByteArray(64 * 1024)
+            val buf = ByteArray(512 * 1024)   // big blocks: fewer round trips to providers and the storage daemon
             while (true) {
                 val n = i.read(buf)
                 if (n < 0) return
@@ -95,6 +95,7 @@ internal object Transfer {
 
     /** Bytes in [f] (with everything below it). */
     fun size(ctx: Context, f: File): Long = when {
+        local(f) -> NativeLib.treeSize(f.path)?.get(0) ?: 0
         isDirectory(ctx, f) == true -> children(ctx, f).sumOf { size(ctx, it) }
         Vfs.isVirtual(f) -> Vfs.stat(ctx, f)?.size ?: 0
         else -> f.length()
@@ -102,7 +103,11 @@ internal object Transfer {
 
     /** Entries in [f], itself included. */
     fun count(ctx: Context, f: File): Long =
-        1 + if (isDirectory(ctx, f) == true) children(ctx, f).sumOf { count(ctx, it) } else 0
+        if (local(f)) NativeLib.treeSize(f.path)?.get(1) ?: 1
+        else 1 + if (isDirectory(ctx, f) == true) children(ctx, f).sumOf { count(ctx, it) } else 0
+
+    /** A real local path the native tree walk can read (parallel, one call instead of one per entry). */
+    private fun local(f: File) = NativeLib.ok && !Vfs.isVirtual(f) && !Archive.inside(f)
 
     /** Renames [f] in its folder; false if the name is taken or invalid. */
     fun rename(ctx: Context, f: File, name: String): Boolean {

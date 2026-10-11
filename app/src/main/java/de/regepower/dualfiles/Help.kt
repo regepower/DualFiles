@@ -22,8 +22,12 @@ object Help {
     @Suppress("DEPRECATION")
     fun show(a: Activity) {
         val dp = a.resources.displayMetrics.density
-        val titles = a.resources.getStringArray(R.array.help_titles)
-        val bodies = a.resources.getStringArray(R.array.help_bodies)
+        // Chapters from res/raw(-de)/help.txt ("# Title" line, then the text): kept compressed in the APK,
+        // unlike string resources
+        val chapters = a.resources.openRawResource(R.raw.help).bufferedReader().use { it.readText() }
+            .split(Regex("(?m)^# ")).map { it.trim() }.filter { it.isNotEmpty() }
+        val titles = chapters.map { it.substringBefore('\n').trim() }
+        val bodies = chapters.map { it.substringAfter('\n', "").trim() }
         val col = LinearLayout(a)
         col.orientation = LinearLayout.VERTICAL
         col.setPadding((20 * dp).toInt(), (8 * dp).toInt(), (20 * dp).toInt(), (8 * dp).toInt())

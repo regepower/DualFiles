@@ -39,6 +39,16 @@ internal object FileOps {
         if (m?.cancelled == true) return false
         if (!src.isDirectory) {
             if (dst.isDirectory) return false
+            if (NativeLib.ok) {
+                // In the kernel: no bytes through Java, far fewer round trips to the storage daemon
+                var last = 0L
+                val r = NativeLib.copyFile(src.path, dst.path) { done, _ ->
+                    m?.add(done - last)
+                    last = done
+                    m?.cancelled != true
+                }
+                return r == 0
+            }
             return try {
                 src.inputStream().use { input -> dst.outputStream().use { Meter.pump(input, it, m) } }
                 true

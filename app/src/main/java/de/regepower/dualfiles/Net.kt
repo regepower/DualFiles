@@ -54,7 +54,7 @@ internal object Net {
     private const val PREFS = "netroots"
     private const val LIST_TTL = 10_000L
 
-    private val idle = HashMap<String, ArrayDeque<NetClient>>()   // guarded by itself
+    private val idle = HashMap<String, java.util.ArrayDeque<NetClient>>()   // guarded by itself (Java's deque: no Kotlin copy in the APK)
     private val lists = HashMap<String, Pair<Long, List<Saf.Doc>>>()   // guarded by itself
     @Volatile var lastError: String? = null
 
@@ -123,7 +123,7 @@ internal object Net {
 
     private fun borrow(ctx: Context, cfg: NetConfig): NetClient {
         while (true) {
-            val c = synchronized(idle) { idle[cfg.id]?.removeFirstOrNull() } ?: return open(ctx, cfg)
+            val c = synchronized(idle) { idle[cfg.id]?.pollFirst() } ?: return open(ctx, cfg)
             if (c.alive()) return c
             c.close()
         }
@@ -131,7 +131,7 @@ internal object Net {
 
     private fun giveBack(cfg: NetConfig, c: NetClient) {
         synchronized(idle) {
-            val q = idle.getOrPut(cfg.id) { ArrayDeque() }
+            val q = idle.getOrPut(cfg.id) { java.util.ArrayDeque() }
             if (q.size < 3) q.addLast(c) else c.close()
         }
     }

@@ -125,7 +125,7 @@ internal object NetSetup {
             setPadding(activity.dp(24), activity.dp(12), activity.dp(24), activity.dp(4))
         }
         val listeners = ArrayList<NsdManager.DiscoveryListener>()
-        val queue = ArrayDeque<NsdServiceInfo>()
+        val queue = java.util.ArrayDeque<NsdServiceInfo>()
         var resolving = false
 
         fun typeOf(service: String) = when {
@@ -137,7 +137,7 @@ internal object NetSetup {
         // Android resolves one service at a time on older versions
         fun resolveNext() {
             if (resolving) return
-            val info = queue.removeFirstOrNull() ?: return
+            val info = queue.pollFirst() ?: return
             resolving = true
             @Suppress("DEPRECATION")
             nsd.resolveService(info, object : NsdManager.ResolveListener {
