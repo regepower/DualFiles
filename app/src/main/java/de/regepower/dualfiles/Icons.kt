@@ -210,10 +210,10 @@ internal class EntryIcon(
                 // The set app's symbol replaces the extension text: its silhouette in the text colour, or its colour icon
                 if (appBadge.mono) {
                     badgePaint.colorFilter = PorterDuffColorFilter(appTint, PorterDuff.Mode.SRC_IN)
-                    canvas.drawBitmap(appBadge.bitmap, null, RectF(10f, 19f, 38f, 47f), badgePaint)
+                    canvas.drawBitmap(appBadge.bitmap, null, BADGE, badgePaint)
                 } else {
                     badgePaint.colorFilter = null
-                    canvas.drawBitmap(appBadge.bitmap, null, RectF(11f, 20f, 37f, 46f), badgePaint)
+                    canvas.drawBitmap(appBadge.bitmap, null, BADGE, badgePaint)
                 }
             } else if (label.isNotEmpty()) {
                 textPaint.color = textColor
@@ -248,6 +248,8 @@ internal class EntryIcon(
         val FILE = Path().apply {
             moveTo(0f, 0f); lineTo(32f, 0f); lineTo(48f, 16f); lineTo(48f, 56f); lineTo(0f, 56f); close()
         }
+        // App symbol on a file: as big as the sheet allows below the folded corner (36 of 48 units)
+        val BADGE = RectF(6f, 18f, 42f, 54f)
         val THUMB = Path().apply { addRoundRect(RectF(0f, 0f, 48f, 56f), 6f, 6f, Path.Direction.CW) }
         val FOLD = Path().apply {
             moveTo(32f, 0f); lineTo(32f, 16f); lineTo(48f, 16f); close()
@@ -281,7 +283,9 @@ internal class AppBadge(val bitmap: Bitmap, val mono: Boolean)
  * 2. the outline of the foreground (or of an old-style icon), if the shape says something;
  * 3. the logo on its plate: pixels clearly different in colour from the plate's edge (e.g. the coloured
  *    Drive triangle on a white disc), from the foreground and then from the whole icon;
- * 4. only if all of that is a meaningless blob (e.g. a multicoloured flower): the app's colour icon.
+ * 4. a blob of differently coloured parts (e.g. the petals of the gallery flower): the parts, with thin
+ *    gaps where the colour changes;
+ * 5. only if all of that fails: the app's colour icon.
  * null = show the extension.
  */
 internal object AppBadges {
@@ -290,6 +294,7 @@ internal object AppBadges {
     // Share of its own bounds a shape may fill and still be recognisable: a triangle or a letter (~0.5–0.7)
     // passes, a disc (0.79) or a rounded square (~0.95) does not
     private const val BLOB = 0.72f
+    private const val PARTS = 0.75f    // the same for a blob cut into its coloured parts
     private val cache = HashMap<String, AppBadge?>()   // UI thread only
 
     fun get(context: Context, cn: android.content.ComponentName): AppBadge? =
@@ -313,6 +318,10 @@ internal object AppBadges {
                 if (layer !is AdaptiveIconDrawable) shape(alphaOf(px), BLOB, 0.03f)?.let { return AppBadge(it, true) }
                 detail(px)?.let { shape(it, BLOB, 0.01f) }?.let { return AppBadge(it, true) }
             }
+        }
+        for (icon in icons) {
+            val layer = if (icon is AdaptiveIconDrawable) icon.foreground ?: continue else icon
+            pixels(layer)?.let { segments(it) }?.let { shape(it, PARTS, 0.03f) }?.let { return AppBadge(it, true) }
         }
         return icons.firstOrNull()?.let { colour(it) }?.let { AppBadge(it, false) }
     }
@@ -384,6 +393,37 @@ internal object AppBadges {
     }
 
     /**
+     * A blob made of differently coloured parts: the opaque pixels minus thin gaps where the colour jumps
+     * between neighbours (petal boundaries), so the parts stay recognisable in one colour. null if there are
+     * hardly any colour boundaries (a plain blob).
+     */
+    private fun segments(px: IntArray): IntArray? {
+        fun solid(i: Int) = px[i] ushr 24 > 128
+        fun diff(a: Int, b: Int) =
+            abs(((a shr 16) and 0xFF) - ((b shr 16) and 0xFF)) + abs(((a shr 8) and 0xFF) - ((b shr 8) and 0xFF)) + abs((a and 0xFF) - (b and 0xFF))
+        val out = IntArray(px.size) { if (solid(it)) 255 else 0 }
+        val solidCount = out.count { it != 0 }
+        if (solidCount == 0) return null
+        val cut = BooleanArray(px.size)
+        for (y in 2 until BIG - 2) for (x in 2 until BIG - 2) {
+            val i = y * BIG + x
+            if (!solid(i)) continue
+            // Two pixels apart: soft, anti-aliased boundaries count too; only between opaque pixels
+            if ((solid(i + 2) && diff(px[i], px[i + 2]) > 90) || (solid(i + 2 * BIG) && diff(px[i], px[i + 2 * BIG]) > 90)) cut[i] = true
+        }
+        // Widen the gaps so they survive scaling down to the badge
+        var removed = 0
+        for (i in px.indices) if (cut[i]) for (dy in -1..1) for (dx in -1..1) {
+            val j = i + dy * BIG + dx
+            if (j in out.indices && out[j] != 0) {
+                out[j] = 0
+                removed++
+            }
+        }
+        return if (removed < solidCount * 0.05f) null else out
+    }
+
+    /**
      * White shape from per-pixel [alpha] (BIG x BIG), or null if it covers less than [minShare] or more than
      * 80 % of the picture, or more than [maxFill] of its own bounds (a filled blob). Icon layers have a lot of
      * empty margin (the launcher's safe zone), so the shape is cut to its own bounds and scaled up: every
@@ -413,7 +453,7 @@ internal object AppBadges {
         if (share < minShare || share > 0.8f || boxShare > maxFill) return null
         val bmp = Bitmap.createBitmap(IntArray(alpha.size) { (alpha[it] shl 24) or 0xFFFFFF }, BIG, BIG, Bitmap.Config.ARGB_8888)
         // Square around the shape, centred, with a little air
-        val side = (max(right - left, bottom - top) + 1) * 1.08f
+        val side = (max(right - left, bottom - top) + 1) * 1.04f
         val cx = (left + right + 1) / 2f
         val cy = (top + bottom + 1) / 2f
         val out = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
