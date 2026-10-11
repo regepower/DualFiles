@@ -31,6 +31,7 @@ import android.text.SpannableStringBuilder
 import android.text.TextPaint
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
+import android.text.style.ForegroundColorSpan
 import android.text.style.TabStopSpan
 import android.util.TypedValue
 import android.webkit.MimeTypeMap
@@ -1276,7 +1277,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (gen != p.gen || isFinishing) return@runOnUiThread
                 p.nodes = nodes
-                p.treeList.contentWidth = nodes.maxOfOrNull { it.width + dp(40) } ?: 0f
+                p.treeList.contentWidth = nodes.maxOfOrNull { it.width + dp(80) } ?: 0f   // + entry count
                 p.treeAdapter.notifyDataSetChanged()
                 p.treeList.requestLayout()
             }
@@ -1344,7 +1345,10 @@ class MainActivity : Activity() {
                     countsPending.remove(path)
                     if (!isFinishing) {
                         counts[path] = n
-                        for (p in panes) p.fileAdapter.notifyDataSetChanged()
+                        for (p in panes) {
+                            p.fileAdapter.notifyDataSetChanged()
+                            p.treeAdapter.notifyDataSetChanged()
+                        }
                     }
                 }
             }
@@ -2194,7 +2198,12 @@ class MainActivity : Activity() {
                 }
             }
             row.icon.setImageDrawable(EntryIcon("", true, FOLDER_YELLOW, Color.WHITE, false, p.color))
-            row.label.text = n.label
+            // Number of entries after the name (counted in the background), so empty folders are seen at once;
+            // not for network folders (one server request each)
+            val count = if (Net.isNet(n.file)) null else childCount(n.file.path)
+            row.label.text = if (count == null) n.label else SpannableStringBuilder(n.label).append(
+                "  $count", ForegroundColorSpan(getColor(R.color.md_on_surface_variant)), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
             row.label.setTextColor(getColor(R.color.md_on_surface))
             row.label.typeface = if (current) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             p.treeList.applyTo(row)
