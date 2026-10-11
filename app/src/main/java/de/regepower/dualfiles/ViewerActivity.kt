@@ -38,6 +38,8 @@ class ViewerActivity : Activity() {
     private var closer: Closeable? = null
     private var size = 0L
     private var hex = false
+    private var hexBytes = 8          // bytes per hex row: 4, 8 or 16 (setting)
+    private var hexPlain = false      // character column: only a-z, A-Z, 0-9 and space (setting)
     private var charset: Charset = Charsets.UTF_8
     private val blocks = LruCache<Long, ByteArray>(32)   // block start -> bytes; UI thread only
 
@@ -201,6 +203,8 @@ class ViewerActivity : Activity() {
             getColor(R.color.md_surface), getColor(R.color.md_on_surface_variant),
         )
         numbers = prefs.getBoolean("viewer_numbers", false)
+        hexBytes = prefs.getInt("viewer_hex_bytes", 8).takeIf { it in HEX_WIDTHS } ?: 8
+        hexPlain = prefs.getBoolean("viewer_hex_plain", false)
         wrap = prefs.getBoolean("viewer_wrap", false)
         grid.onColumns = { if (wrap && !hex) rebuildWrap() }
         grid.onDoubleWord = { copySelection(false) }
@@ -308,11 +312,28 @@ class ViewerActivity : Activity() {
         val menu = android.widget.PopupMenu(this, anchor)
         menu.menu.add(0, 1, 0, R.string.view_numbers).apply { isCheckable = true; isChecked = numbers; isEnabled = !hex }
         menu.menu.add(0, 2, 1, R.string.view_wrap).apply { isCheckable = true; isChecked = wrap; isEnabled = !hex }
+        // Hex view: bytes per row (one choice) and a plain character column
+        for ((k, n) in HEX_WIDTHS.withIndex()) {
+            menu.menu.add(1, 10 + n, 2 + k, getString(R.string.view_hex_bytes, n)).isEnabled = hex
+        }
+        menu.menu.setGroupCheckable(1, true, true)
+        menu.menu.findItem(10 + hexBytes)?.isChecked = true
+        menu.menu.add(0, 3, 10, R.string.view_hex_plain).apply { isCheckable = true; isChecked = hexPlain; isEnabled = hex }
         menu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> {
                     numbers = !numbers
                     prefs.edit().putBoolean("viewer_numbers", numbers).apply()
+                }
+                3 -> {
+                    hexPlain = !hexPlain
+                    prefs.edit().putBoolean("viewer_hex_plain", hexPlain).apply()
+                    grid.refresh()
+                }
+                in HEX_WIDTHS.map { 10 + it } -> {
+                    hexBytes = item.itemId - 10
+                    prefs.edit().putInt("viewer_hex_bytes", hexBytes).apply()
+                    grid.reset()
                 }
                 2 -> {
                     if (!wrap && size > WRAP_LIMIT) {
@@ -463,9 +484,10 @@ class ViewerActivity : Activity() {
 
     private fun hexDigits() = if (size > 0xFFFFFFFFL) 10 else 8
 
-    private fun hexWidth() = hexDigits() + 2 + 16 * 3 + 1 + 16
+    // Offset, two spaces, "XX " per byte (one extra space after every 8), then the characters
+    private fun hexWidth() = hexDigits() + 2 + hexBytes * 3 + (hexBytes - 1) / 8 + hexBytes
 
-    private fun hexRows(): Int = minOf((size + 15) / 16, Int.MAX_VALUE.toLong()).toInt()
+    private fun hexRows(): Int = minOf((size + hexBytes - 1) / hexBytes, Int.MAX_VALUE.toLong()).toInt()
 
     private fun textRow(i: Int): String {
         val a = starts
@@ -490,22 +512,23 @@ class ViewerActivity : Activity() {
     }
 
     private fun hexRow(i: Int): String {
-        val pos = i * 16L
-        val b = bytes(pos, 16)
+        val pos = i.toLong() * hexBytes
+        val b = bytes(pos, hexBytes)
         val sb = StringBuilder(hexWidth())
         val off = java.lang.Long.toHexString(pos).uppercase()
         repeat(hexDigits() - off.length) { sb.append('0') }
         sb.append(off).append("  ")
-        for (k in 0 until 16) {
+        for (k in 0 until hexBytes) {
             if (k < b.size) {
                 val v = b[k].toInt() and 0xFF
                 sb.append(HEX[v shr 4]).append(HEX[v and 15]).append(' ')
             } else sb.append("   ")
-            if (k == 7) sb.append(' ')
+            if (k % 8 == 7 && k < hexBytes - 1) sb.append(' ')
         }
         for (k in b.indices) {
-            val v = b[k].toInt() and 0xFF
-            sb.append(if (v in 0x20..0x7E) v.toChar() else '.')
+            val c = (b[k].toInt() and 0xFF).toChar()
+            val shown = if (hexPlain) c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == ' ' else c in ' '..'~'
+            sb.append(if (shown) c else '.')
         }
         return sb.toString()
     }
@@ -521,5 +544,6 @@ class ViewerActivity : Activity() {
         private const val MAX_ROW = 4096               // bytes per text row before it continues
         private const val MAX_ROWS = 4_000_000         // 32 MB of row offsets at most
         private val HEX = "0123456789ABCDEF".toCharArray()
+        private val HEX_WIDTHS = intArrayOf(4, 8, 16)
     }
 }
