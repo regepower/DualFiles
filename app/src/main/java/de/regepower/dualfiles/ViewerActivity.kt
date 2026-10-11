@@ -98,6 +98,9 @@ class ViewerActivity : Activity() {
         show()
     }
 
+    /** Zoom is remembered separately for text and hex (hex rows are wider). */
+    private fun zoomKey() = if (hex) "viewer_sp_hex" else "viewer_sp"
+
     /** Name of a file handed over by another app, for the title. */
     private fun displayName(uri: Uri): String = try {
         contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
@@ -167,6 +170,7 @@ class ViewerActivity : Activity() {
         head.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         toggle = chip(R.string.view_hex) {
             hex = !hex
+            grid.setTextSizeSp(prefs.getFloat(zoomKey(), 13f))   // each mode keeps its own zoom
             grid.reset()
             show()
         }
@@ -208,8 +212,8 @@ class ViewerActivity : Activity() {
         wrap = prefs.getBoolean("viewer_wrap", false)
         grid.onColumns = { if (wrap && !hex) rebuildWrap() }
         grid.onDoubleWord = { copySelection(false) }
-        grid.setTextSizeSp(prefs.getFloat("viewer_sp", 13f))
-        grid.onZoom = { prefs.edit().putFloat("viewer_sp", it).apply() }
+        grid.setTextSizeSp(prefs.getFloat(zoomKey(), 13f))
+        grid.onZoom = { prefs.edit().putFloat(zoomKey(), it).apply() }
         grid.onSelection = { on -> selBar.visibility = if (on) View.VISIBLE else View.GONE }
         grid.source = object : TextGrid.Source {
             override fun count() = when {
@@ -528,7 +532,8 @@ class ViewerActivity : Activity() {
         for (k in b.indices) {
             val c = (b[k].toInt() and 0xFF).toChar()
             val shown = if (hexPlain) c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == ' ' else c in ' '..'~'
-            sb.append(if (shown) c else '.')
+            // Plain mode: anything but letters, digits and space becomes a space
+            sb.append(if (shown) c else if (hexPlain) ' ' else '.')
         }
         return sb.toString()
     }

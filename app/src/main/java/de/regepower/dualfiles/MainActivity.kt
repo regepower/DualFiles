@@ -93,6 +93,8 @@ private class CountIcon(private val icon: android.graphics.drawable.Drawable, pr
 private const val ERROR_COLOR_LIGHT = 0xFFFFB4AB.toInt()   // error text on the dark container
 private const val REQ_TREE = 1
 private const val REQ_SAVE = 2
+// Viewer settings that go into the configuration file
+private val VIEWER_KEYS = setOf("viewer_sp", "viewer_sp_hex", "viewer_numbers", "viewer_wrap", "viewer_hex_bytes", "viewer_hex_plain")
 private const val REQ_LOAD = 3
 
 internal fun Context.dp(v: Int): Int = (v * resources.displayMetrics.density + 0.5f).toInt()
@@ -2283,12 +2285,18 @@ class MainActivity : Activity() {
         }
     }
 
-    /** App choices, favourites and the hidden-files and preview settings as JSON (format 1). Chosen folders are not exported: their access belongs to this phone. */
+    /**
+     * App choices, favourites, the list settings and the viewer settings (zoom and options) as JSON
+     * (format 1). Chosen folders are not exported: their access belongs to this phone.
+     */
     private fun configJson(): String {
         val assoc = JSONObject()
         for ((k, v) in choices.all) assoc.put(k, v as String)
+        val viewer = JSONObject()
+        for ((k, v) in settings.all) if (k in VIEWER_KEYS && v != null) viewer.put(k, v)
         return JSONObject().put("app", packageName).put("format", 1).put("assoc", assoc)
-            .put("favs", org.json.JSONArray(favorites().sorted())).put("hidden", showHidden).put("thumbs", showThumbs).toString(2)
+            .put("favs", org.json.JSONArray(favorites().sorted())).put("hidden", showHidden).put("thumbs", showThumbs)
+            .put("updir", showUpRow).put("viewer", viewer).toString(2)
     }
 
     /** Replaces the app choices with the ones in [text]. Throws if it is not one of our files. */
@@ -2309,6 +2317,22 @@ class MainActivity : Activity() {
         if (o.has("thumbs")) {
             showThumbs = o.getBoolean("thumbs")
             settings.edit().putBoolean("thumbs", showThumbs).apply()
+        }
+        if (o.has("updir")) {
+            showUpRow = o.getBoolean("updir")
+            settings.edit().putBoolean("updir", showUpRow).apply()
+        }
+        o.optJSONObject("viewer")?.let { v ->
+            val e = settings.edit()
+            for (k in v.keys()) when (val x = v.get(k)) {
+                // Only the known viewer keys, with their own type (JSON numbers come back as Int/Double)
+                is Boolean -> if (k in VIEWER_KEYS) e.putBoolean(k, x)
+                is Number -> when (k) {
+                    "viewer_sp", "viewer_sp_hex" -> e.putFloat(k, x.toFloat())
+                    "viewer_hex_bytes" -> e.putInt(k, x.toInt())
+                }
+            }
+            e.apply()
         }
     }
 
