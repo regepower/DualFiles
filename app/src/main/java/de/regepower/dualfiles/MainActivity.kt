@@ -31,7 +31,9 @@ import android.text.SpannableStringBuilder
 import android.text.TextPaint
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
+import android.text.style.DynamicDrawableSpan
 import android.text.style.ForegroundColorSpan
+import android.text.style.ImageSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.TabStopSpan
 import android.util.TypedValue
@@ -383,6 +385,8 @@ class MainActivity : Activity() {
     private val counter = Executors.newSingleThreadExecutor()  // folder item counts
     private val counts = HashMap<String, Int>()                // UI thread only
     private val countsPending = HashSet<String>()              // UI thread only
+    private val treeCounts = HashMap<String, IntArray>()       // folder -> [folders, files], for the tree; UI thread only
+    private val treeCountsPending = HashSet<String>()          // UI thread only
     private var backAt = 0L
     private val settings by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
     @Volatile private var showHidden = false                   // read on the loader thread
@@ -1279,7 +1283,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (gen != p.gen || isFinishing) return@runOnUiThread
                 p.nodes = nodes
-                p.treeList.contentWidth = nodes.maxOfOrNull { it.width + dp(80) } ?: 0f   // + entry count
+                p.treeList.contentWidth = nodes.maxOfOrNull { it.width + dp(130) } ?: 0f   // + folder and file counts
                 p.treeAdapter.notifyDataSetChanged()
                 p.treeList.requestLayout()
             }
@@ -1330,6 +1334,53 @@ class MainActivity : Activity() {
                 }
             }
         })
+    }
+
+    /**
+     * Folders and files in a folder for the tree: null while counted on the counter thread. Hidden entries
+     * count only while shown. Local folders: names and types in one call, no access per entry.
+     */
+    private fun dirFileCount(path: String): IntArray? {
+        treeCounts[path]?.let { return it }
+        if (treeCountsPending.add(path)) {
+            counter.execute {
+                val f = File(path)
+                val arc = Archive.split(f)
+                val n = IntArray(2)
+                fun add(name: String, dir: Boolean) {
+                    if (visible(name)) n[if (dir) 0 else 1]++
+                }
+                when {
+                    arc != null -> Archive.children(arc.first, arc.second).forEach { add(it.name, it.isDir) }
+                    Vfs.isVirtual(f) -> Vfs.list(this, f).forEach { add(it.name, it.isDir) }
+                    else -> {
+                        val fast = if (NativeLib.ok) NativeLib.listDir(path, false) else null
+                        if (fast != null) {
+                            @Suppress("UNCHECKED_CAST") val names = fast[0] as Array<String?>
+                            val info = fast[1] as LongArray
+                            for (i in names.indices) names[i]?.let { add(it, info[i * 3 + 2] and 1L != 0L) }
+                        } else f.listFiles()?.forEach { add(it.name, it.isDirectory) }
+                    }
+                }
+                runOnUiThread {
+                    treeCountsPending.remove(path)
+                    if (!isFinishing) {
+                        treeCounts[path] = n
+                        for (p in panes) p.treeAdapter.notifyDataSetChanged()
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    /** Small folder / file symbols for the counts in the tree, in the faint count colour. */
+    private val countIcons by lazy {
+        val faint = getColor(R.color.md_on_surface_variant).let { Color.argb(0xA0, Color.red(it), Color.green(it), Color.blue(it)) }
+        val size = (15f * 0.75f * resources.displayMetrics.scaledDensity).toInt()
+        listOf(R.drawable.ic_count_dir, R.drawable.ic_count_file).map { res ->
+            { getDrawable(res)!!.mutate().apply { setTint(faint); setBounds(0, 0, size, size) } }
+        }
     }
 
     /** Item count of a folder: null while it is being counted on the counter thread. */
@@ -1861,6 +1912,7 @@ class MainActivity : Activity() {
                 }
                 for (p in panes) p.selected.clear()
                 counts.clear()
+                treeCounts.clear()
                 refreshAll()
                 val err = r.error
                 if (err == null) {
@@ -1880,6 +1932,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 for (p in panes) p.selected.clear()
                 counts.clear()
+                treeCounts.clear()
                 refreshAll()
                 if (!ok) Toast.makeText(this, R.string.op_failed, Toast.LENGTH_SHORT).show()
             }
@@ -2037,6 +2090,7 @@ class MainActivity : Activity() {
                         showHidden = !showHidden
                         settings.edit().putBoolean("hidden", showHidden).apply()
                         counts.clear()
+                        treeCounts.clear()
                         refreshAll()
                     }
                     6 -> {
@@ -2204,14 +2258,21 @@ class MainActivity : Activity() {
             row.icon.setImageDrawable(EntryIcon("", true, FOLDER_YELLOW, Color.WHITE, false, p.color))
             // Number of entries after the name (counted in the background), so empty folders are seen at once;
             // not for network folders (one server request each)
-            val count = if (Net.isNet(n.file)) null else childCount(n.file.path)
-            // Smaller and fainter than the name, so it does not read as part of it
-            row.label.text = if (count == null) n.label else SpannableStringBuilder(n.label).append("   ").apply {
-                val start = length
-                append(count.toString())
-                setSpan(RelativeSizeSpan(0.75f), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                val faint = getColor(R.color.md_on_surface_variant)
-                setSpan(ForegroundColorSpan(Color.argb(0xA0, Color.red(faint), Color.green(faint), Color.blue(faint))), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            val count = if (Net.isNet(n.file)) null else dirFileCount(n.file.path)
+            // "3 [folder]   12 [file]", smaller and fainter than the name, so it does not read as part of it
+            row.label.text = if (count == null) n.label else SpannableStringBuilder(n.label).apply {
+                val faint = getColor(R.color.md_on_surface_variant).let { Color.argb(0xA0, Color.red(it), Color.green(it), Color.blue(it)) }
+                for (k in 0..1) {
+                    append(if (k == 0) "   " else "    ")
+                    val start = length
+                    append(count[k].toString())
+                    setSpan(RelativeSizeSpan(0.75f), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    setSpan(ForegroundColorSpan(faint), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    append(" ")
+                    val at = length
+                    append("\u00A0")
+                    setSpan(ImageSpan(countIcons[k](), DynamicDrawableSpan.ALIGN_CENTER), at, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
             }
             row.label.setTextColor(getColor(R.color.md_on_surface))
             row.label.typeface = if (current) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
