@@ -1300,7 +1300,8 @@ class MainActivity : Activity() {
     }
 
     private fun updateBar() {
-        val active = panes.firstOrNull { it.selected.isNotEmpty() }
+        // Only for several marked entries: a single one has the hold menu
+        val active = panes.firstOrNull { it.selected.size > 1 }
         val appears = active != null && bar.visibility != View.VISIBLE
         bar.visibility = if (active == null) View.GONE else View.VISIBLE
         if (active == null) return
@@ -1337,9 +1338,10 @@ class MainActivity : Activity() {
                 val f = File(path)
                 val arc = Archive.split(f)
                 val n = when {
-                    arc != null -> Archive.children(arc.first, arc.second).size
-                    Vfs.isVirtual(f) -> Vfs.list(this, f).size
-                    else -> f.list()?.size ?: 0
+                    // Hidden entries count only while they are shown (setting)
+                    arc != null -> Archive.children(arc.first, arc.second).count { visible(it.name) }
+                    Vfs.isVirtual(f) -> Vfs.list(this, f).count { visible(it.name) }
+                    else -> f.list()?.count { visible(it) } ?: 0
                 }
                 runOnUiThread {
                     countsPending.remove(path)
