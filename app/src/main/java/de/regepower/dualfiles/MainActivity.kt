@@ -146,6 +146,8 @@ private class Pane(val color: Int, val bandRes: Int, var dir: File) {
     lateinit var fileList: PanList
     var treePage = 0
     var filePage = 0
+    val scrolls = HashMap<String, Pair<Int, Int>>()   // folder -> list position (first row, its top) when it was left
+    var pendingScroll: Pair<Int, Int>? = null         // position to restore once the opened folder is shown
     val arcOpen = HashSet<String>()        // unfolded folders (inner paths) of the archive shown as a tree
     var lastMarked: File? = null           // row marked last: kept visible when the marking bar appears
     @Volatile var gen = 0
@@ -1102,6 +1104,12 @@ class MainActivity : Activity() {
             }
             arc
         } ?: to
+        // Remember where the list stood in the folder we leave; coming back puts it there again
+        if (dir.path != p.dir.path) {
+            val list = p.fileList
+            p.scrolls[p.dir.path] = Pair(list.firstVisiblePosition, list.getChildAt(0)?.top ?: 0)
+            p.pendingScroll = p.scrolls[dir.path] ?: Pair(0, 0)
+        }
         p.dir = dir
         p.selected.clear()
         remember(dir)
@@ -1399,6 +1407,10 @@ class MainActivity : Activity() {
                 updateTools()
                 p.fileList.contentWidth = entries.maxOfOrNull { it.width } ?: 0f
                 p.fileAdapter.notifyDataSetChanged()
+                p.pendingScroll?.let { (row, top) ->
+                    p.fileList.setSelectionFromTop(row.coerceAtMost(maxOf(0, p.entries.size - 1)), top)
+                    p.pendingScroll = null
+                }
                 p.fileList.requestLayout()
             }
             if (gen != p.gen) return@execute
