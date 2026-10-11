@@ -815,8 +815,12 @@ class MainActivity : Activity() {
         p.treeList = list
         p.treeAdapter = TreeAdapter(p)
         list.adapter = p.treeAdapter
-        // A tap only chooses the folder of this side; swiping to its list shows it (no page jump)
-        list.setOnItemClickListener { _, _, pos, _ -> open(p, p.nodes[pos].file) }
+        // A tap chooses the folder of this side (swiping to its list shows it, no page jump) and toggles it:
+        // a closed folder unfolds, an unfolded one folds
+        list.setOnItemClickListener { _, _, pos, _ ->
+            val n = p.nodes[pos]
+            open(p, n.file, unfold = n.fav || !p.expanded.contains(n.file.path))
+        }
         page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         page.addView(rangeBar(list), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(14)))
         return page
@@ -956,7 +960,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun open(p: Pane, to: File) {
+    private fun open(p: Pane, to: File, unfold: Boolean = true) {
         if (!Vfs.isVirtual(to) && !Archive.inside(to) && !to.canRead()) return
         // An archive opens as a small tree of its folders and files; a path inside it unfolds up to there
         val dir = Archive.split(to)?.let { (arc, inner) ->
@@ -972,6 +976,7 @@ class MainActivity : Activity() {
         p.selected.clear()
         remember(dir)
         expandTo(p, dir)
+        if (!unfold) p.expanded.remove(dir.path)
         p.treeList.offset = 0
         p.fileList.offset = 0
         loadPane(p)
