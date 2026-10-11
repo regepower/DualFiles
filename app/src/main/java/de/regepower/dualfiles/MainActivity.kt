@@ -42,6 +42,7 @@ import android.webkit.MimeTypeMap
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.BaseAdapter
@@ -309,6 +310,47 @@ internal class WideClip(ctx: Context) : FrameLayout(ctx) {
             MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
             getChildMeasureSpec(hSpec, paddingTop + paddingBottom + lp.topMargin + lp.bottomMargin + hUsed, lp.height)
         )
+    }
+}
+
+/** Bottom sheet that closes with a swipe down (when its list is at the top), like the system sheets. */
+private class SwipeSheet(ctx: Context, private val scroll: ScrollView, private val onClose: () -> Unit) : FrameLayout(ctx) {
+    private val slop = ViewConfiguration.get(ctx).scaledTouchSlop
+    private var downY = 0f
+    private var dragging = false
+
+    private fun startDrag(ev: MotionEvent): Boolean {
+        if (!dragging && ev.rawY - downY > slop && !scroll.canScrollVertically(-1)) {
+            dragging = true
+            downY = ev.rawY
+        }
+        return dragging
+    }
+
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downY = ev.rawY
+                dragging = false
+            }
+            MotionEvent.ACTION_MOVE -> return startDrag(ev)
+        }
+        return false
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> downY = ev.rawY
+            MotionEvent.ACTION_MOVE -> if (startDrag(ev)) translationY = maxOf(0f, ev.rawY - downY)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (dragging && translationY > minOf(height * 0.25f, 120 * resources.displayMetrics.density)) {
+                    animate().translationY(height.toFloat()).setDuration(150).withEndAction(onClose)
+                } else animate().translationY(0f).setDuration(150)
+                dragging = false
+            }
+        }
+        return true
     }
 }
 
@@ -958,8 +1000,10 @@ class MainActivity : Activity() {
         list.setOnItemLongClickListener { _, _, pos, _ ->
             val e = p.entries[pos]
             if (!e.up) {
-                if (!p.selected.contains(e.file)) toggle(p, e.file)
-                showMenu(e.file, e.isDir)
+                // Marked only while the sheet is open (its actions work on the marks); unmarked again after
+                val temp = !p.selected.contains(e.file)
+                if (temp) toggle(p, e.file)
+                showMenu(e.file, e.isDir, if (temp) p else null)
             }
             true
         }
@@ -1491,7 +1535,8 @@ class MainActivity : Activity() {
      * Menu for the held entry as a sheet from the bottom: name and size, the frequent actions as symbols,
      * the rest grouped; only what fits the entry is offered (archive, picture, printable …).
      */
-    private fun showMenu(file: File, isDir: Boolean) {
+    /** [tempIn]: the side where [file] was marked only for this sheet; the mark goes when the sheet closes. */
+    private fun showMenu(file: File, isDir: Boolean, tempIn: Pane? = null) {
         val inArchive = Archive.inside(file.parentFile ?: file) && !Archive.isArchive(file)
         val mime = FileOps.mime(file)
         val dialog = android.app.Dialog(this)
@@ -1535,12 +1580,18 @@ class MainActivity : Activity() {
         head.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         col.addView(head)
 
-        fun go(code: Int) {
-            dialog.dismiss()
-            runAction(code, file, mime)
+        fun unmark() {
+            if (tempIn != null && tempIn.selected.remove(file)) refreshSelection()
         }
-        val textLike = !isDir && (mime?.startsWith("text/") == true ||
-            file.extension.lowercase() in setOf("json", "xml", "log", "md", "csv", "ini", "conf", "yml", "yaml", "sh", "kt", "java", "c", "h", "py", "js"))
+        var chosen = false
+        dialog.setOnDismissListener { if (!chosen) unmark() }
+        fun go(code: Int) {
+            chosen = true
+            dialog.dismiss()
+            // The actions take what is marked right away (dialogs that follow keep their own list)
+            runAction(code, file, mime)
+            unmark()
+        }
         val quick = LinearLayout(this)
         quick.setPadding(0, dp(12), 0, dp(4))
         fun q(icon: Int, label: Int, code: Int, danger: Boolean = false) = quick.addView(barAction(icon, label, danger) { go(code) })
@@ -1549,11 +1600,10 @@ class MainActivity : Activity() {
         } else {
             q(R.drawable.ic_copy, R.string.copy, 0)
             q(R.drawable.ic_move, R.string.move, 1)
-            // Third symbol fits the entry: unpack an archive, view a text, else share
+            // Third symbol: unpack for an archive, else share (view is in the list below)
             when {
                 isDir -> Unit
                 Archive.isArchiveName(file) -> q(R.drawable.ic_unarchive, R.string.unpack_short, 7)
-                textLike -> q(R.drawable.ic_view, R.string.view_short, 9)
                 else -> q(R.drawable.ic_share, R.string.share, 4)
             }
             q(R.drawable.ic_edit, R.string.rename, 6)
@@ -1588,7 +1638,8 @@ class MainActivity : Activity() {
             group(R.string.menu_open)
             if (!inArchive) entry(R.string.open_with, 3)
             entry(R.string.view_open, 9)
-            if (!inArchive && (Archive.isArchiveName(file) || textLike)) entry(R.string.share, 4)
+            // Share sits in the symbol row, except for archives (there: unpack)
+            if (!inArchive && Archive.isArchiveName(file)) entry(R.string.share, 4)
             if (!inArchive && FilePrint.canPrint(mime)) entry(R.string.print, 5)
         }
         if (!inArchive) {
@@ -1606,7 +1657,7 @@ class MainActivity : Activity() {
 
         val scroll = ScrollView(this)
         scroll.addView(col)
-        dialog.setContentView(scroll)
+        dialog.setContentView(SwipeSheet(this, scroll) { dialog.dismiss() }.apply { addView(scroll) })
         dialog.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setGravity(Gravity.BOTTOM)
@@ -1653,10 +1704,10 @@ class MainActivity : Activity() {
     }
 
     /** [which]: 0 copy, 1 move, 2 delete; source is the pane with a selection, target the other one. */
-    private fun act(which: Int, to: File? = null) {
-        val src = panes.firstOrNull { it.selected.isNotEmpty() } ?: return
+    private fun act(which: Int, to: File? = null, from: Pane? = null, list: List<File>? = null) {
+        val src = from ?: panes.firstOrNull { it.selected.isNotEmpty() } ?: return
         val dstDir = to ?: (if (src === panes[0]) panes[1] else panes[0]).dir
-        val items = src.selected.toList()
+        val items = list ?: src.selected.toList()
         Archive.split(src.dir)?.let { (arc, inner) ->
             if (which == 0) askExtract(arc, items.mapNotNull { Archive.split(it)?.second ?: if (inner.isEmpty()) it.name else "$inner/${it.name}" })
             else Toast.makeText(this, R.string.arc_readonly, Toast.LENGTH_SHORT).show()
@@ -1741,13 +1792,14 @@ class MainActivity : Activity() {
      */
     private fun pickDestination(which: Int) {
         val src = panes.firstOrNull { it.selected.isNotEmpty() } ?: return
+        val items = src.selected.toList()   // kept: a mark made only for the menu sheet is gone by the time a folder is picked
         val other = (if (src === panes[0]) panes[1] else panes[0]).dir
         val choices = (listOf(other) + favorites().sorted().map { File(it) } + recentFolders())
             .distinctBy { it.path }.filter { it.path != src.dir.path && !Archive.inside(it) }.take(12)
         val labels = choices.mapIndexed { i, f -> (if (i == 0) "➜ " else if (favorites().contains(f.path)) "★ " else "🕘 ") + folderLabel(f) }
         AlertDialog.Builder(this)
             .setTitle(if (which == 0) R.string.copy_to else R.string.move_to)
-            .setItems(labels.toTypedArray()) { _, i -> act(which, choices[i]) }
+            .setItems(labels.toTypedArray()) { _, i -> act(which, choices[i], src, items) }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
