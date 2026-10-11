@@ -95,7 +95,7 @@ private const val REQ_TREE = 1
 private const val REQ_SAVE = 2
 // Viewer settings that go into the configuration file
 private val VIEWER_KEYS = setOf(
-    "viewer_sp", "viewer_sp_hex", "viewer_numbers", "viewer_wrap", "viewer_hex_bytes", "viewer_hex_plain", "viewer_syntax", "viewer_md",
+    "viewer_sp", "viewer_sp_hex", "viewer_numbers", "viewer_wrap", "viewer_hex_bytes", "viewer_hex_plain", "viewer_syntax", "viewer_md", "viewer_md_zoom",
 )
 private const val REQ_LOAD = 3
 
@@ -2414,7 +2414,7 @@ class MainActivity : Activity() {
                 // Only the known viewer keys, with their own type (JSON numbers come back as Int/Double)
                 is Boolean -> if (k in VIEWER_KEYS) e.putBoolean(k, x)
                 is Number -> when (k) {
-                    "viewer_sp", "viewer_sp_hex" -> e.putFloat(k, x.toFloat())
+                    "viewer_sp", "viewer_sp_hex", "viewer_md_zoom" -> e.putFloat(k, x.toFloat())
                     "viewer_hex_bytes" -> e.putInt(k, x.toInt())
                 }
             }

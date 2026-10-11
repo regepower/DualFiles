@@ -3,7 +3,6 @@ package de.regepower.dualfiles
 import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.Spanned
-import android.text.style.BackgroundColorSpan
 import android.text.style.BulletSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
@@ -17,13 +16,25 @@ import android.text.style.URLSpan
 /**
  * Small Markdown renderer for the viewer (Android has none built in): headings, paragraphs, bold, italic,
  * strike, inline and fenced code, lists, quotes, links, rules and tables (shown as monospaced lines).
- * Builds framework spans for a TextView; no library.
+ * The result is a list of blocks: wrapped text, code that keeps its lines (shown unwrapped, scrollable
+ * sideways) and rules. Framework spans only; no library.
  */
 internal object Markdown {
-    class Colors(val accent: Int, val muted: Int, val codeBg: Int, val dp: Float)
+    class Colors(val accent: Int, val muted: Int, val dp: Float)
 
-    fun render(src: String, c: Colors): CharSequence {
-        val out = SpannableStringBuilder()
+    /** [code]: monospaced lines, not wrapped. [rule]: a horizontal line (text empty). */
+    class Block(val text: CharSequence, val code: Boolean = false, val rule: Boolean = false)
+
+    fun render(src: String, c: Colors): List<Block> {
+        val blocks = ArrayList<Block>()
+        var out = SpannableStringBuilder()
+        // Ends the running text block (without trailing blank lines) and adds [b] after it
+        fun push(b: Block?) {
+            while (out.isNotEmpty() && out[out.length - 1] == '\n') out.delete(out.length - 1, out.length)
+            if (out.isNotEmpty()) blocks.add(Block(out))
+            out = SpannableStringBuilder()
+            if (b != null) blocks.add(b)
+        }
         val lines = src.replace("\r\n", "\n").split('\n')
         var i = 0
         val para = StringBuilder()
@@ -40,14 +51,13 @@ internal object Markdown {
                 t.startsWith("```") || t.startsWith("~~~") -> {
                     flush()
                     val fence = t.take(3)
-                    val start = out.length
+                    val code = StringBuilder()
                     i++
                     while (i < lines.size && !lines[i].trim().startsWith(fence)) {
-                        out.append(lines[i]).append('\n')
+                        code.append(lines[i].replace("\t", "    ")).append('\n')
                         i++
                     }
-                    code(out, start, c)
-                    out.append('\n')
+                    push(Block(code.toString().trimEnd('\n'), code = true))
                 }
                 t.isEmpty() -> flush()
                 t.startsWith("#") && t.trimStart('#').startsWith(" ") -> {
@@ -62,9 +72,7 @@ internal object Markdown {
                 }
                 t.matches(Regex("([-*_])( *\\1){2,}")) -> {
                     flush()
-                    val start = out.length
-                    out.append("────────────────────\n\n")
-                    out.setSpan(ForegroundColorSpan(c.muted), start, out.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    push(Block("", rule = true))
                 }
                 t.startsWith(">") -> {
                     flush()
@@ -107,15 +115,17 @@ internal object Markdown {
                 }
                 t.startsWith("|") -> {
                     flush()
-                    // Tables: one monospaced line per row, separator rows left out
-                    val start = out.length
+                    // Tables: one monospaced row per line, columns padded to the same width, separator rows left out
+                    val rows = ArrayList<List<String>>()
                     while (i < lines.size && lines[i].trim().startsWith("|")) {
                         val row = lines[i].trim()
-                        if (!row.matches(Regex("[|:\\- ]+"))) out.append(row.trim('|').split('|').joinToString("  │ ") { it.trim() }).append('\n')
+                        if (!row.matches(Regex("[|:\\- ]+"))) rows.add(row.trim('|').split('|').map { it.trim() })
                         i++
                     }
-                    code(out, start, c)
-                    out.append('\n')
+                    val widths = IntArray(rows.maxOfOrNull { it.size } ?: 0)
+                    for (r in rows) for ((k, cell) in r.withIndex()) widths[k] = maxOf(widths[k], cell.length)
+                    val table = rows.joinToString("\n") { r -> r.withIndex().joinToString(" │ ") { (k, cell) -> cell.padEnd(widths[k]) }.trimEnd() }
+                    push(Block(table, code = true))
                     continue
                 }
                 else -> para.append(t).append(if (line.endsWith("  ")) "\n" else " ")
@@ -123,14 +133,14 @@ internal object Markdown {
             i++
         }
         flush()
-        while (out.isNotEmpty() && out[out.length - 1] == '\n') out.delete(out.length - 1, out.length)
-        return out
+        push(null)
+        return blocks
     }
 
-    private fun code(out: SpannableStringBuilder, start: Int, c: Colors) {
+    /** Inline `code`: monospaced, no background (a background per line looked patchy). */
+    private fun code(out: SpannableStringBuilder, start: Int) {
         if (out.length <= start) return
         out.setSpan(TypefaceSpan("monospace"), start, out.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        out.setSpan(BackgroundColorSpan(c.codeBg), start, out.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
     /** Bold, italic, strike, `code`, links and images inside one block of text. */
@@ -151,7 +161,7 @@ internal object Markdown {
                     } else {
                         val start = out.length
                         out.append(s, i + 1, e)
-                        code(out, start, c)
+                        code(out, start)
                         i = e + 1
                     }
                 }

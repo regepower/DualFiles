@@ -46,7 +46,8 @@ class ViewerActivity : Activity() {
     private var palette = IntArray(6)
     private lateinit var gridRow: View
     private lateinit var mdScroll: android.widget.ScrollView
-    private lateinit var mdText: TextView
+    private lateinit var mdBox: LinearLayout
+    private var mdScale = 1f          // pinch zoom of the formatted Markdown (setting)
     private var mdShownFor = false    // the formatted Markdown is built
     private var charset: Charset = Charsets.UTF_8
     private val blocks = LruCache<Long, ByteArray>(32)   // block start -> bytes; UI thread only
@@ -278,15 +279,38 @@ class ViewerActivity : Activity() {
         root.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(hBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(14)))
         // Formatted Markdown (instead of the grid while it is shown)
-        mdText = TextView(this).apply {
-            setTextColor(getColor(R.color.md_on_surface))
-            textSize = 15f
-            setLineSpacing(0f, 1.15f)
-            setTextIsSelectable(true)
-            movementMethod = android.text.method.LinkMovementMethod.getInstance()
+        mdBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(8), dp(16), dp(24))
         }
-        mdScroll = android.widget.ScrollView(this).apply { addView(mdText); visibility = View.GONE }
+        mdScale = prefs.getFloat("viewer_md_zoom", 1f)
+        // Two fingers zoom the text (and re-wrap it), one finger scrolls
+        val pinch = android.view.ScaleGestureDetector(this, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(d: android.view.ScaleGestureDetector): Boolean {
+                mdScale = (mdScale * d.scaleFactor).coerceIn(0.5f, 3f)
+                applyMdSize()
+                return true
+            }
+            override fun onScaleEnd(d: android.view.ScaleGestureDetector) {
+                prefs.edit().putFloat("viewer_md_zoom", mdScale).apply()
+            }
+        })
+        mdScroll = object : android.widget.ScrollView(this) {
+            override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+                pinch.onTouchEvent(ev)
+                if (pinch.isInProgress || ev.pointerCount > 1) {
+                    // No scrolling or text selection while zooming
+                    val cancel = android.view.MotionEvent.obtain(ev).apply { action = android.view.MotionEvent.ACTION_CANCEL }
+                    super.dispatchTouchEvent(cancel)
+                    cancel.recycle()
+                    return true
+                }
+                return super.dispatchTouchEvent(ev)
+            }
+        }.apply {
+            addView(mdBox)
+            visibility = View.GONE
+        }
         root.addView(mdScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         return root
     }
@@ -298,13 +322,57 @@ class ViewerActivity : Activity() {
     private fun buildMarkdown() {
         if (mdShownFor) return
         mdShownFor = true
-        mdText.text = "…"
-        val colors = Markdown.Colors(getColor(R.color.md_primary), getColor(R.color.md_on_surface_variant), palette[3] and 0x33FFFFFF, resources.displayMetrics.density)
+        val colors = Markdown.Colors(getColor(R.color.md_primary), getColor(R.color.md_on_surface_variant), resources.displayMetrics.density)
         Thread {
             val text = String(bytes(0, size.toInt()), charset)
-            val shown = Markdown.render(text, colors)
-            main.post { if (!isFinishing) mdText.text = shown }
+            val blocks = Markdown.render(text, colors)
+            main.post { if (!isFinishing) showMarkdown(blocks) }
         }.start()
+    }
+
+    /** One view per block: wrapped text, code that keeps its lines (scrolls sideways), rules. */
+    private fun showMarkdown(blocks: List<Markdown.Block>) {
+        mdBox.removeAllViews()
+        for (b in blocks) {
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.bottomMargin = dp(12)
+            when {
+                b.rule -> {
+                    mdBox.addView(View(this).apply { setBackgroundColor(getColor(R.color.md_outline)) },
+                        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).also { it.bottomMargin = dp(12) })
+                }
+                b.code -> {
+                    val t = mdTextView(b.text, MD_CODE_SP).apply { typeface = Typeface.MONOSPACE; setHorizontallyScrolling(true) }
+                    mdBox.addView(android.widget.HorizontalScrollView(this).apply {
+                        isHorizontalScrollBarEnabled = false
+                        addView(t)
+                    }, lp)
+                }
+                else -> mdBox.addView(mdTextView(b.text, MD_TEXT_SP).apply {
+                    setLineSpacing(0f, 1.15f)
+                    // Blocks with links: tappable links (instead of text selection)
+                    val links = (b.text as? android.text.Spanned)?.getSpans(0, b.text.length, android.text.style.URLSpan::class.java)
+                    if (!links.isNullOrEmpty()) movementMethod = android.text.method.LinkMovementMethod.getInstance()
+                }, lp)
+            }
+        }
+        applyMdSize()
+    }
+
+    private fun mdTextView(text: CharSequence, sp: Float) = TextView(this).apply {
+        this.text = text
+        tag = sp
+        setTextColor(getColor(R.color.md_on_surface))
+        setTextIsSelectable(true)
+    }
+
+    /** Text size of every block from its base size and the pinch zoom. */
+    private fun applyMdSize() {
+        fun walk(v: View) {
+            if (v is TextView) (v.tag as? Float)?.let { v.textSize = it * mdScale }
+            if (v is ViewGroup) for (k in 0 until v.childCount) walk(v.getChildAt(k))
+        }
+        walk(mdBox)
     }
 
     /** Refreshes counts, width and labels after a mode change or new index data. */
@@ -616,5 +684,7 @@ class ViewerActivity : Activity() {
         private const val MAX_ROWS = 4_000_000         // 32 MB of row offsets at most
         private val HEX = "0123456789ABCDEF".toCharArray()
         private val HEX_WIDTHS = intArrayOf(4, 8, 16)
+        private const val MD_TEXT_SP = 15f
+        private const val MD_CODE_SP = 13f
     }
 }
