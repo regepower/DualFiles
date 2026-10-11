@@ -115,6 +115,9 @@ private enum class Filter(val label: Int, val exts: Set<String>? = null) {
     APKS(R.string.filter_apks, setOf("apk", "apks", "xapk", "apkm")),
 }
 
+/** Folders first, then names in natural order ("2" before "10"). */
+private val FOLDERS_FIRST = compareBy<Entry> { !it.isDir }.thenBy(Natural) { it.key }
+
 /** One row of the folder tree; [width] is the name's width in px. */
 /** [fav]: a favourite at the top of the tree (not unfoldable there). */
 private class Node(val file: File, val depth: Int, val label: String, val width: Float, val fav: Boolean = false)
@@ -1135,10 +1138,10 @@ class MainActivity : Activity() {
         // Archive tree: its own order; a filter hides files only, so the folders keep the tree together
         if (p.inArchive) return p.raw.filter { it.up || it.isDir || matches(it, p) }
         val cmp: Comparator<Entry> = when (p.sortBy) {
-            SortBy.NAME -> compareBy<Entry> { it.key }
+            SortBy.NAME -> compareBy(Natural) { it.key }
             SortBy.DATE -> compareBy<Entry> { it.modified }
             SortBy.SIZE -> compareBy<Entry> { it.size }
-            SortBy.TYPE -> compareBy<Entry>({ it.file.extension.lowercase() }, { it.key })
+            SortBy.TYPE -> compareBy<Entry> { it.file.extension.lowercase() }.thenBy(Natural) { it.key }
         }
         val items = p.raw.filter { !it.up && matches(it, p) }
             .sortedWith(compareBy<Entry> { !it.isDir }.then(if (p.sortDesc) cmp.reversed() else cmp))
@@ -1240,7 +1243,7 @@ class MainActivity : Activity() {
     /** Sub-folders of [f] for the tree: folders only (archives are files and live in the list). */
     private fun subDirs(f: File): List<File> =
         if (Archive.inside(f)) emptyList()
-        else if (Vfs.isVirtual(f)) Vfs.list(this, f).filter { it.isDir && visible(it.name) }.map { File(f, it.name) }.sortedBy { it.name.lowercase() }
+        else if (Vfs.isVirtual(f)) Vfs.list(this, f).filter { it.isDir && visible(it.name) }.map { File(f, it.name) }.sortedWith(compareBy<File, String>(Natural) { it.name.lowercase() })
         else (if (NativeLib.ok) NativeLib.listDir(f.path, false) else null)?.let { fast ->
             // Names and types only: no access per entry (each one is a round trip on shared storage)
             @Suppress("UNCHECKED_CAST") val names = fast[0] as Array<String?>
@@ -1248,8 +1251,8 @@ class MainActivity : Activity() {
             names.indices.mapNotNull { i ->
                 val name = names[i] ?: return@mapNotNull null
                 if (visible(name) && info[i * 3 + 2] and 1L != 0L) File(f, name) else null
-            }.sortedBy { it.name.lowercase() }
-        } ?: f.listFiles { x -> visible(x.name) && x.isDirectory }.orEmpty().sortedBy { it.name.lowercase() }
+            }.sortedWith(compareBy<File, String>(Natural) { it.name.lowercase() })
+        } ?: f.listFiles { x -> visible(x.name) && x.isDirectory }.orEmpty().sortedWith(compareBy<File, String>(Natural) { it.name.lowercase() })
 
     /** Names starting with a dot are hidden unless the setting shows them. */
     private fun visible(name: String) = showHidden || !name.startsWith(".")
@@ -1286,7 +1289,7 @@ class MainActivity : Activity() {
             // The whole archive as a tree: folders first, unfolded ones followed by their contents
             if (showUp) arc.parentFile?.let { out.add(finish(Entry(it, true, isDir = true))) }
             fun add(inner: String, depth: Int) {
-                val items = Archive.children(arc, inner).filter { visible(it.name) }.sortedWith(compareBy({ !it.isDir }, { it.name.lowercase() }))
+                val items = Archive.children(arc, inner).filter { visible(it.name) }.sortedWith(compareBy<Archive.Item> { !it.isDir }.thenBy(Natural) { it.name.lowercase() })
                 for (item in items) {
                     out.add(finish(Entry(File(arc, item.path), false, item.isDir, item.size, item.modified, depth)).apply { width += dp(18) * depth })
                     if (item.isDir && item.path in arcOpen) add(item.path, depth + 1)
@@ -1300,7 +1303,7 @@ class MainActivity : Activity() {
             val docs = Vfs.list(this, dir).filter { visible(it.name) }.map { d ->
                 finish(Entry(File(dir, d.name), false, d.isDir, d.size, d.modified))
             }
-            out.addAll(docs.sortedWith(compareBy({ !it.isDir }, { it.key })))
+            out.addAll(docs.sortedWith(FOLDERS_FIRST))
             return out
         }
         if (showUp) dir.parentFile?.let { out.add(finish(Entry(it, true, isDir = true))) }
@@ -1316,7 +1319,7 @@ class MainActivity : Activity() {
                 val flags = info[i * 3 + 2]
                 items.add(finish(Entry(File(dir, name), false, flags and 1L != 0L, info[i * 3], info[i * 3 + 1])))
             }
-            out.addAll(items.sortedWith(compareBy({ !it.isDir }, { it.key })))
+            out.addAll(items.sortedWith(FOLDERS_FIRST))
             return out
         }
         val files = dir.listFiles().orEmpty().filter { visible(it.name) }.map { f ->
@@ -1327,7 +1330,7 @@ class MainActivity : Activity() {
                 Entry(f, false)
             }
         }
-        out.addAll(files.map { finish(it) }.sortedWith(compareBy({ !it.isDir }, { it.key })))
+        out.addAll(files.map { finish(it) }.sortedWith(FOLDERS_FIRST))
         return out
     }
 
