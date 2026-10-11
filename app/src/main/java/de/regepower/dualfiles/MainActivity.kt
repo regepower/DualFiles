@@ -32,6 +32,7 @@ import android.text.TextPaint
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
 import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.text.style.TabStopSpan
 import android.util.TypedValue
 import android.webkit.MimeTypeMap
@@ -305,6 +306,7 @@ private class TreeRow(ctx: Context) : LinearLayout(ctx), NameRow {
         addView(icon, LayoutParams(ctx.dp(22), ctx.dp(26)))
         label.textSize = 15f
         label.maxLines = 1
+        label.gravity = Gravity.CENTER_VERTICAL   // the label fills the row height: centre its text on the icon
         label.setPadding(ctx.dp(8), 0, ctx.dp(12), 0)
         clip.addView(label, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER_VERTICAL))
         addView(clip, LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
@@ -2203,9 +2205,14 @@ class MainActivity : Activity() {
             // Number of entries after the name (counted in the background), so empty folders are seen at once;
             // not for network folders (one server request each)
             val count = if (Net.isNet(n.file)) null else childCount(n.file.path)
-            row.label.text = if (count == null) n.label else SpannableStringBuilder(n.label).append(
-                "  $count", ForegroundColorSpan(getColor(R.color.md_on_surface_variant)), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
+            // Smaller and fainter than the name, so it does not read as part of it
+            row.label.text = if (count == null) n.label else SpannableStringBuilder(n.label).append("   ").apply {
+                val start = length
+                append(count.toString())
+                setSpan(RelativeSizeSpan(0.75f), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                val faint = getColor(R.color.md_on_surface_variant)
+                setSpan(ForegroundColorSpan(Color.argb(0xA0, Color.red(faint), Color.green(faint), Color.blue(faint))), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
             row.label.setTextColor(getColor(R.color.md_on_surface))
             row.label.typeface = if (current) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             p.treeList.applyTo(row)
