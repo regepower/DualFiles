@@ -620,8 +620,19 @@ class MainActivity : Activity() {
         Toast.makeText(this, R.string.back_again, Toast.LENGTH_SHORT).show()
     }
 
+    /** Back from a screen opened out of the settings (file dialog, viewer, app chooser): one level up again. */
+    private var returnTo: (() -> Unit)? = null
+
+    /** Back, a tap outside or Cancel in a sub-dialog goes one level up ([up]) instead of closing everything. */
+    private fun AlertDialog.Builder.upTo(up: () -> Unit): AlertDialog.Builder =
+        setOnCancelListener { up() }.setNegativeButton(R.string.cancel) { _, _ -> up() }
+
     override fun onResume() {
         super.onResume()
+        returnTo?.let {
+            returnTo = null
+            mainView.post(it)
+        }
         val ok = Environment.isExternalStorageManager()
         mainView.visibility = if (ok) View.VISIBLE else View.GONE
         permView.visibility = if (ok) View.GONE else View.VISIBLE
@@ -2270,10 +2281,14 @@ class MainActivity : Activity() {
         section(R.string.set_apps)
         item(R.string.assoc_title) { showAssociations() }
         section(R.string.set_storage)
-        item(R.string.saf_add) { pickTree() }
+        item(R.string.saf_add) {
+            returnTo = ::showSettings
+            pickTree()
+        }
         item(R.string.saf_remove) { showRemoveSaf() }
         section(R.string.set_config)
         item(R.string.cfg_save) {
+            returnTo = ::showSettings
             startActivityForResult(
                 Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
                     .setType("application/json").putExtra(Intent.EXTRA_TITLE, "DualFiles.json"),
@@ -2281,6 +2296,7 @@ class MainActivity : Activity() {
             )
         }
         item(R.string.cfg_load) {
+            returnTo = ::showSettings
             startActivityForResult(
                 Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json"),
                 REQ_LOAD
@@ -2288,6 +2304,7 @@ class MainActivity : Activity() {
         }
         section(R.string.set_problems)
         item(R.string.report_title) {
+            returnTo = ::showSettings
             Thread {
                 val f = Report.build(this)
                 runOnUiThread { viewFile(f) }
@@ -2306,7 +2323,10 @@ class MainActivity : Activity() {
     private fun showRemoveSaf() {
         val folders = Vfs.rootFiles(this)
         if (folders.isEmpty()) {
-            AlertDialog.Builder(this).setMessage(R.string.saf_none).setPositiveButton(R.string.help_ok, null).show()
+            AlertDialog.Builder(this).setMessage(R.string.saf_none)
+                .setPositiveButton(R.string.help_ok) { _, _ -> showSettings() }
+                .setOnCancelListener { showSettings() }
+                .show()
             return
         }
         AlertDialog.Builder(this)
@@ -2314,8 +2334,9 @@ class MainActivity : Activity() {
             .setItems(folders.map { rootName(it) }.toTypedArray()) { _, which ->
                 Vfs.remove(this, folders[which])
                 refreshAll()
+                showSettings()
             }
-            .setNegativeButton(R.string.cancel, null)
+            .upTo(::showSettings)
             .show()
     }
 
@@ -2416,7 +2437,8 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this)
                 .setTitle(R.string.assoc_title)
                 .setMessage(R.string.assoc_none)
-                .setPositiveButton(R.string.help_ok, null)
+                .setPositiveButton(R.string.help_ok) { _, _ -> showSettings() }
+                .setOnCancelListener { showSettings() }
                 .show()
             return
         }
@@ -2425,7 +2447,7 @@ class MainActivity : Activity() {
             .setItems(exts.map { ".$it  →  ${appLabel(choices.getString(it, null))}" }.toTypedArray()) { _, which ->
                 showAssociationActions(exts[which])
             }
-            .setNegativeButton(R.string.cancel, null)
+            .upTo(::showSettings)
             .show()
     }
 
@@ -2434,6 +2456,7 @@ class MainActivity : Activity() {
             .setTitle(".$ext")
             .setItems(arrayOf(getString(R.string.assoc_change), getString(R.string.delete))) { _, which ->
                 if (which == 0) {
+                    returnTo = ::showAssociations
                     start(chooserFor(ext, sampleIntent(ext)))
                 } else {
                     choices.edit().remove(ext).apply()
@@ -2441,7 +2464,7 @@ class MainActivity : Activity() {
                     showAssociations()
                 }
             }
-            .setNegativeButton(R.string.cancel, null)
+            .upTo(::showAssociations)
             .show()
     }
 
