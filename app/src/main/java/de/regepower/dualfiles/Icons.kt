@@ -283,8 +283,8 @@ internal class AppBadge(val bitmap: Bitmap, val mono: Boolean)
  * 2. the outline of the foreground (or of an old-style icon), if the shape says something;
  * 3. the logo on its plate: pixels clearly different in colour from the plate's edge (e.g. the coloured
  *    Drive triangle on a white disc), from the foreground and then from the whole icon;
- * 4. a blob of differently coloured parts (e.g. the petals of the gallery flower): the parts, with thin
- *    gaps where the colour changes;
+ * 4. a logo of differently coloured parts (e.g. the petals of the gallery flower): the parts, with thin
+ *    gaps where the hue changes (user choice "C" of three tried styles);
  * 5. only if all of that fails: the app's colour icon.
  * null = show the extension.
  */
@@ -320,8 +320,8 @@ internal object AppBadges {
             }
         }
         for (icon in icons) {
-            val layer = if (icon is AdaptiveIconDrawable) icon.foreground ?: continue else icon
-            pixels(layer)?.let { segments(it) }?.let { shape(it, PARTS, 0.03f) }?.let { return AppBadge(it, true) }
+            val layers = if (icon is AdaptiveIconDrawable) listOfNotNull(icon.foreground, icon) else listOf(icon)
+            for (layer in layers) pixels(layer)?.let { segments(it) }?.let { shape(it, PARTS, 0.03f) }?.let { return AppBadge(it, true) }
         }
         return icons.firstOrNull()?.let { colour(it) }?.let { AppBadge(it, false) }
     }
@@ -393,24 +393,38 @@ internal object AppBadges {
     }
 
     /**
-     * A blob made of differently coloured parts: the opaque pixels minus thin gaps where the colour jumps
-     * between neighbours (petal boundaries), so the parts stay recognisable in one colour. null if there are
-     * hardly any colour boundaries (a plain blob).
+     * A logo of differently coloured parts (gallery flower, Photos pinwheel): its coloured pixels minus thin
+     * gaps where the hue changes between neighbours, so the parts stay recognisable in one colour. The hue
+     * separates soft blends (blue into cyan) that a plain RGB difference misses; white or grey plates and
+     * backgrounds are left out (not saturated). null if there are hardly any hue boundaries.
      */
     private fun segments(px: IntArray): IntArray? {
-        fun solid(i: Int) = px[i] ushr 24 > 128
-        fun diff(a: Int, b: Int) =
-            abs(((a shr 16) and 0xFF) - ((b shr 16) and 0xFF)) + abs(((a shr 8) and 0xFF) - ((b shr 8) and 0xFF)) + abs((a and 0xFF) - (b and 0xFF))
-        val out = IntArray(px.size) { if (solid(it)) 255 else 0 }
+        val hsv = FloatArray(3)
+        val hue = FloatArray(px.size)
+        val solid = BooleanArray(px.size)
+        for (i in px.indices) {
+            val c = px[i]
+            if (c ushr 24 <= 128) continue
+            Color.colorToHSV(c, hsv)
+            if (hsv[1] > 0.25f && hsv[2] > 0.24f) {
+                solid[i] = true
+                hue[i] = hsv[0]
+            }
+        }
+        fun hueDiff(a: Int, b: Int): Float {
+            val d = abs(hue[a] - hue[b])
+            return min(d, 360f - d)
+        }
+        val cut = BooleanArray(px.size)
+        for (y in 0 until BIG - 2) for (x in 0 until BIG - 2) {
+            val i = y * BIG + x
+            if (!solid[i]) continue
+            // Two pixels apart, only between coloured pixels
+            if ((solid[i + 2] && hueDiff(i, i + 2) > 14f) || (solid[i + 2 * BIG] && hueDiff(i, i + 2 * BIG) > 14f)) cut[i] = true
+        }
+        val out = IntArray(px.size) { if (solid[it]) 255 else 0 }
         val solidCount = out.count { it != 0 }
         if (solidCount == 0) return null
-        val cut = BooleanArray(px.size)
-        for (y in 2 until BIG - 2) for (x in 2 until BIG - 2) {
-            val i = y * BIG + x
-            if (!solid(i)) continue
-            // Two pixels apart: soft, anti-aliased boundaries count too; only between opaque pixels
-            if ((solid(i + 2) && diff(px[i], px[i + 2]) > 90) || (solid(i + 2 * BIG) && diff(px[i], px[i + 2 * BIG]) > 90)) cut[i] = true
-        }
         // Widen the gaps so they survive scaling down to the badge
         var removed = 0
         for (i in px.indices) if (cut[i]) for (dy in -1..1) for (dx in -1..1) {
