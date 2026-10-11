@@ -811,10 +811,8 @@ class MainActivity : Activity() {
         p.treeList = list
         p.treeAdapter = TreeAdapter(p)
         list.adapter = p.treeAdapter
-        list.setOnItemClickListener { _, _, pos, _ ->
-            open(p, p.nodes[pos].file)
-            pager.snapTo(p.filePage)
-        }
+        // A tap only chooses the folder of this side; swiping to its list shows it (no page jump)
+        list.setOnItemClickListener { _, _, pos, _ -> open(p, p.nodes[pos].file) }
         page.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         page.addView(rangeBar(list), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(14)))
         return page
@@ -1073,11 +1071,9 @@ class MainActivity : Activity() {
         return out
     }
 
+    /** Sub-folders of [f] for the tree: folders only (archives are files and live in the list). */
     private fun subDirs(f: File): List<File> =
-        if (Archive.inside(f)) Archive.split(f)!!.let { (arc, inner) ->
-            Archive.children(arc, inner).filter { it.isDir }.map { File(f, it.name) }.sortedBy { it.name.lowercase() }
-        }
-        // Archives show up in the tree below their folder and open like folders
+        if (Archive.inside(f)) emptyList()
         else if (Vfs.isVirtual(f)) Vfs.list(this, f).filter { it.isDir && visible(it.name) }.map { File(f, it.name) }.sortedBy { it.name.lowercase() }
         else (if (NativeLib.ok) NativeLib.listDir(f.path, false) else null)?.let { fast ->
             // Names and types only: no access per entry (each one is a round trip on shared storage)
@@ -1085,10 +1081,9 @@ class MainActivity : Activity() {
             val info = fast[1] as LongArray
             names.indices.mapNotNull { i ->
                 val name = names[i] ?: return@mapNotNull null
-                val dir = info[i * 3 + 2] and 1L != 0L
-                if (visible(name) && (dir || Archive.isArchiveName(File(name)))) File(f, name) else null
+                if (visible(name) && info[i * 3 + 2] and 1L != 0L) File(f, name) else null
             }.sortedBy { it.name.lowercase() }
-        } ?: f.listFiles { x -> visible(x.name) && (x.isDirectory || Archive.isArchive(x)) }.orEmpty().sortedBy { it.name.lowercase() }
+        } ?: f.listFiles { x -> visible(x.name) && x.isDirectory }.orEmpty().sortedBy { it.name.lowercase() }
 
     /** Names starting with a dot are hidden unless the setting shows them. */
     private fun visible(name: String) = showHidden || !name.startsWith(".")
@@ -2149,7 +2144,8 @@ class MainActivity : Activity() {
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val row = convertView as? TreeRow ?: TreeRow(this@MainActivity)
             val n = p.nodes[position]
-            val current = n.file.path == p.dir.path
+            // Inside an archive the folder that holds the archive is marked (archives are files, not in the tree)
+            val current = n.file.path == (Archive.split(p.dir)?.first?.parent ?: p.dir.path)
             val expanded = p.expanded.contains(n.file.path)
             row.setPadding(dp(8 + n.depth * 20), 0, 0, 0)
             row.setBackgroundColor(if (current) getColor(R.color.md_container) else Color.TRANSPARENT)
@@ -2158,20 +2154,12 @@ class MainActivity : Activity() {
             row.chevron.setOnClickListener {
                 if (n.fav) {
                     open(p, n.file)
-                    pager.snapTo(p.filePage)
                 } else {
                     if (!p.expanded.remove(n.file.path)) p.expanded.add(n.file.path)
                     loadPane(p)
                 }
             }
-            // Archives in the tree keep their file icon; they unfold like folders
-            if (Archive.isArchiveName(n.file) && !n.fav) {
-                val ext = n.file.extension.lowercase()
-                val (fill, text) = VividColors.colorsFor(ext)
-                row.icon.setImageDrawable(EntryIcon(ext.uppercase(), false, fill, text, false, p.color))
-            } else {
-                row.icon.setImageDrawable(EntryIcon("", true, FOLDER_YELLOW, Color.WHITE, false, p.color))
-            }
+            row.icon.setImageDrawable(EntryIcon("", true, FOLDER_YELLOW, Color.WHITE, false, p.color))
             row.label.text = n.label
             row.label.setTextColor(getColor(R.color.md_on_surface))
             row.label.typeface = if (current) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
