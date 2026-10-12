@@ -161,6 +161,18 @@ private class Pane(val color: Int, val bandRes: Int, var dir: File) {
     var sortDesc = false
     var filter = Filter.ALL
     var nameQuery = ""
+    var nameFuzzy = false                 // name filter allows small typos
+    private var matchKey: String? = null
+    private var match: (String) -> Boolean = { true }
+    /** [key] (lower-case name) passes the name filter; the matcher is rebuilt only when the filter changes. */
+    fun nameMatches(key: String): Boolean {
+        val k = "$nameFuzzy|$nameQuery"
+        if (k != matchKey) {
+            matchKey = k
+            match = NameMatch.matcher(nameQuery, nameFuzzy)
+        }
+        return match(key)
+    }
     var inArchive = false                 // dir lies inside a ZIP/7z archive (read-only)
     lateinit var emptyView: TextView      // "folder is empty" over the list
     lateinit var loading: View            // spinner over the list while a folder is read
@@ -597,6 +609,7 @@ class MainActivity : Activity() {
                 p.sortDesc = b.getBoolean("desc$i")
                 p.filter = Filter.values().getOrNull(b.getInt("filter$i")) ?: p.filter
                 p.nameQuery = b.getString("query$i") ?: ""
+                p.nameFuzzy = b.getBoolean("fuzzy$i")
             }
         }
         for (p in panes) expandTo(p, p.dir)
@@ -692,6 +705,7 @@ class MainActivity : Activity() {
             outState.putBoolean("desc$i", p.sortDesc)
             outState.putInt("filter$i", p.filter.ordinal)
             outState.putString("query$i", p.nameQuery)
+            outState.putBoolean("fuzzy$i", p.nameFuzzy)
         }
         if (::pager.isInitialized) outState.putInt("page", Math.round(pager.scrollX / pager.pageWidth.toFloat()))
     }
@@ -1293,7 +1307,7 @@ class MainActivity : Activity() {
     }
 
     private fun matches(e: Entry, p: Pane): Boolean {
-        if (p.nameQuery.isNotEmpty() && !e.key.contains(p.nameQuery.lowercase())) return false
+        if (p.nameQuery.isNotEmpty() && !p.nameMatches(e.key)) return false
         return when (p.filter) {
             Filter.ALL -> true
             Filter.FOLDERS -> e.isDir
@@ -1344,17 +1358,23 @@ class MainActivity : Activity() {
         val row = LinearLayout(this)
         row.gravity = Gravity.CENTER_VERTICAL
         row.setPadding(dp(24), dp(4), dp(12), dp(4))
-        val accent = TypedValue().also { theme.resolveAttribute(android.R.attr.colorAccent, it, true) }.data
+        // Same text style as the choices above
+        val look = TypedValue().also { theme.resolveAttribute(android.R.attr.textAppearanceMedium, it, true) }.resourceId
+        val itemColor = obtainStyledAttributes(intArrayOf(android.R.attr.textColorAlertDialogListItem)).let {
+            val c = it.getColorStateList(0)
+            it.recycle()
+            c
+        }
         row.addView(TextView(this).apply {
             setText(R.string.filter_name)
-            textSize = 15f
-            setTextColor(accent)
+            setTextAppearance(look)
+            itemColor?.let { setTextColor(it) }
             setPadding(0, dp(12), dp(8), dp(12))
         })
         if (p.nameQuery.isNotEmpty()) {
             val query = TextView(this).apply {
-                text = getString(R.string.filter_name_value, p.nameQuery)
-                textSize = 15f
+                text = (if (p.nameFuzzy) "≈ " else "") + getString(R.string.filter_name_value, p.nameQuery)
+                setTextAppearance(look)
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(p.color)
                 maxLines = 1
@@ -1400,11 +1420,20 @@ class MainActivity : Activity() {
         input.setText(p.nameQuery)
         input.setHint(R.string.filter_name_hint)
         input.setSingleLine()
+        val fuzzy = CheckBox(this)
+        fuzzy.setText(R.string.filter_fuzzy)
+        fuzzy.isChecked = p.nameFuzzy
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(20), dp(4), dp(20), 0)
+        box.addView(input)
+        box.addView(fuzzy)
         AlertDialog.Builder(this)
             .setTitle(R.string.filter_name)
-            .setView(input)
+            .setView(box)
             .setPositiveButton(R.string.done) { _, _ ->
                 p.nameQuery = input.text.toString().trim()
+                p.nameFuzzy = fuzzy.isChecked
                 applyView(p)
             }
             .setNegativeButton(R.string.cancel, null)

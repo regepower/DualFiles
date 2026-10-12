@@ -41,10 +41,11 @@
     <string name="filter_video">Videos</string>
     <string name="filter_audio">Audio</string>
     <string name="filter_docs">Documents</string>
-    <string name="filter_name">Name contains…</string>
+    <string name="filter_name">Contains:</string>
     <string name="filter_name_value">\"%1$s\"</string>
     <string name="filter_name_clear">Remove name filter</string>
-    <string name="filter_name_hint">Text in name</string>
+    <string name="filter_fuzzy">Fuzzy (small typos allowed)</string>
+    <string name="filter_name_hint">Text in name (* and ? as wildcards)</string>
     <string name="chip_sort">Sort: %1$s %2$s</string>
     <string name="chip_filter">Show: %1$s%2$s</string>
     <string name="settings_title">Settings</string>
