@@ -226,6 +226,53 @@ internal class PanList(context: Context) : ListView(context) {
         }
         return false
     }
+    // One finger, slow and sideways: shifts the names (a fast swipe switches the page instead)
+    private var panning = false
+    private var panX = 0f
+    private var panDownX = 0f
+    private var panDownY = 0f
+    private var panStart = 0
+
+    private fun slowPan(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                panning = false
+                panDownX = ev.x
+                panDownY = ev.y
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (panning) {
+                    offset = (panStart - (ev.x - panX)).toInt().coerceIn(0, maxOffset())
+                    applyOffset()
+                    return true
+                }
+                val dx = Math.abs(ev.x - panDownX)
+                val dy = Math.abs(ev.y - panDownY)
+                if (ev.pointerCount == 1 && maxOffset() > 0 && dx > touchSlop * 3 && dx > dy * 2 &&
+                    !SnapScroll.isFast(dx, ev.eventTime - ev.downTime, resources.displayMetrics.density)
+                ) {
+                    panning = true
+                    panX = ev.x
+                    panStart = offset
+                    // No click, long press or vertical scroll for this touch; the pages stay put
+                    val c = MotionEvent.obtain(ev.downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, ev.x, ev.y, 0)
+                    super.dispatchTouchEvent(c)
+                    c.recycle()
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> if (panning) {
+                panning = false   // the two-finger shift takes over
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (panning) {
+                panning = false
+                return true
+            }
+        }
+        return false
+    }
+
     var contentWidth = 0f          // widest name of the list in px
     var offset = 0                 // px, the same for every visible row
     var onRange: ((Int, Int, Int) -> Unit)? = null
@@ -273,6 +320,7 @@ internal class PanList(context: Context) : ListView(context) {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (rangeTouch(ev)) return true
+        if (!ignore && slowPan(ev)) return true
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 ignore = false
@@ -456,8 +504,6 @@ class MainActivity : Activity() {
     private val rootNames = HashMap<String, String>()
     private val loaders = arrayOf(Executors.newSingleThreadExecutor(), Executors.newSingleThreadExecutor())   // folder reads, one per side
     private val counter = Executors.newSingleThreadExecutor()  // folder item counts
-    private val counts = HashMap<String, Int>()                // UI thread only
-    private val countsPending = HashSet<String>()              // UI thread only
     private val treeCounts = HashMap<String, IntArray>()       // folder -> [folders, files], for the tree; UI thread only
     private val treeCountsPending = HashSet<String>()          // UI thread only
     private var backAt = 0L
@@ -1518,7 +1564,10 @@ class MainActivity : Activity() {
                     treeCountsPending.remove(path)
                     if (!isFinishing) {
                         treeCounts[path] = n
-                        for (p in panes) p.treeAdapter.notifyDataSetChanged()
+                        for (p in panes) {
+                            p.treeAdapter.notifyDataSetChanged()
+                            p.fileAdapter.notifyDataSetChanged()
+                        }
                     }
                 }
             }
@@ -1532,32 +1581,23 @@ class MainActivity : Activity() {
         listOf(R.drawable.ic_count_dir, R.drawable.ic_count_file).map { getDrawable(it)!!.mutate().apply { setTint(faint) } }
     }
 
-    /** Item count of a folder: null while it is being counted on the counter thread. */
-    private fun childCount(path: String): Int? {
-        counts[path]?.let { return it }
-        if (countsPending.add(path)) {
-            counter.execute {
-                val f = File(path)
-                val arc = Archive.split(f)
-                val n = when {
-                    // Hidden entries count only while they are shown (setting)
-                    arc != null -> Archive.children(arc.first, arc.second).count { visible(it.name) }
-                    Vfs.isVirtual(f) -> Vfs.list(this, f).count { visible(it.name) }
-                    else -> f.list()?.count { visible(it) } ?: 0
-                }
-                runOnUiThread {
-                    countsPending.remove(path)
-                    if (!isFinishing) {
-                        counts[path] = n
-                        for (p in panes) {
-                            p.fileAdapter.notifyDataSetChanged()
-                            p.treeAdapter.notifyDataSetChanged()
-                        }
-                    }
-                }
-            }
+    private fun faintColor() = getColor(R.color.md_on_surface_variant).let { Color.argb(0xA0, Color.red(it), Color.green(it), Color.blue(it)) }
+
+    /** "3 [folder] • 12 [file]" (a count of 0 left out) at [scale] of the text size, in [color]. */
+    private fun appendCounts(sb: SpannableStringBuilder, count: IntArray, scale: Float, color: Int) {
+        fun small(t: String) {
+            val start = sb.length
+            sb.append(t)
+            if (scale != 1f) sb.setSpan(RelativeSizeSpan(scale), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            sb.setSpan(ForegroundColorSpan(color), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        return null
+        for ((j, k) in (0..1).filter { count[it] > 0 }.withIndex()) {
+            if (j > 0) small("  •  ")
+            small(count[k].toString())
+            val at = sb.length
+            sb.append("\u00A0")
+            sb.setSpan(CountIcon(countIcons[k], scale), at, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
     }
 
     // ---- Actions ----
@@ -2068,7 +2108,6 @@ class MainActivity : Activity() {
                     return@runOnUiThread
                 }
                 for (p in panes) p.selected.clear()
-                counts.clear()
                 treeCounts.clear()
                 refreshAll()
                 val err = r.error
@@ -2088,7 +2127,6 @@ class MainActivity : Activity() {
             val ok = op()
             runOnUiThread {
                 for (p in panes) p.selected.clear()
-                counts.clear()
                 treeCounts.clear()
                 refreshAll()
                 if (!ok) Toast.makeText(this, R.string.op_failed, Toast.LENGTH_SHORT).show()
@@ -2258,7 +2296,6 @@ class MainActivity : Activity() {
         switch(R.string.set_hidden, showHidden) {
             showHidden = it
             settings.edit().putBoolean("hidden", it).apply()
-            counts.clear()
             treeCounts.clear()
             refreshAll()
         }
@@ -2499,24 +2536,8 @@ class MainActivity : Activity() {
             val count = if (Net.isNet(n.file)) null else dirFileCount(n.file.path)
             // "3 [folder] • 12 [file]", smaller and fainter than the name so it does not read as part of it;
             // a count of 0 is left out (nothing at all for an empty folder)
-            val parts = count?.let { c -> (0..1).filter { c[it] > 0 } }.orEmpty()
-            row.label.text = if (count == null || parts.isEmpty()) n.label else SpannableStringBuilder(n.label).apply {
-                val faint = getColor(R.color.md_on_surface_variant).let { Color.argb(0xA0, Color.red(it), Color.green(it), Color.blue(it)) }
-                fun small(t: String) {
-                    val start = length
-                    append(t)
-                    setSpan(RelativeSizeSpan(COUNT_SCALE), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    setSpan(ForegroundColorSpan(faint), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-                append("   ")
-                for ((j, k) in parts.withIndex()) {
-                    if (j > 0) small("  •  ")
-                    small(count[k].toString())
-                    val at = length
-                    append("\u00A0")
-                    setSpan(CountIcon(countIcons[k], COUNT_SCALE), at, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-            }
+            row.label.text = if (count == null || (count[0] == 0 && count[1] == 0)) n.label
+            else SpannableStringBuilder(n.label).append("   ").also { appendCounts(it, count, COUNT_SCALE, faintColor()) }
             row.label.setTextColor(getColor(R.color.md_on_surface))
             row.label.typeface = if (current) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             p.treeList.applyTo(row)
@@ -2560,7 +2581,10 @@ class MainActivity : Activity() {
             row.meta.setTextColor(getColor(R.color.md_on_surface_variant))
             row.meta.text = when {
                 e.up -> ""
-                e.isDir -> childCount(f.path)?.let { getString(R.string.items_count, it) } ?: "…"
+                // Folders: sub-folders and files like in the tree ("leer" when there is nothing)
+                e.isDir -> dirFileCount(f.path)?.let { c ->
+                    if (c[0] == 0 && c[1] == 0) getString(R.string.dir_empty) else SpannableStringBuilder().also { appendCounts(it, c, 1f, getColor(R.color.md_on_surface_variant)) }
+                } ?: "…"
                 else -> SpannableString(e.meta).apply { setSpan(TabStopSpan.Standard(sizeColumn.toInt()), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE) }
             }
             p.fileList.applyTo(row)

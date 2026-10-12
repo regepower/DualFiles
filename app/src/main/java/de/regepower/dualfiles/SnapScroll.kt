@@ -12,6 +12,8 @@ import kotlin.math.roundToInt
  * Horizontal pager without AndroidX: pages of equal width that always snap into place.
  * A page swipe needs a clearly horizontal one-finger drag; it switches the page only after
  * [SWITCH_DISTANCE] of the page width or with a fast fling. Two fingers never switch pages.
+ * A slow sideways drag is first offered to the list below (it shifts long names, see [isFast]);
+ * only if the list does not take it does the page follow.
  */
 class SnapScroll(context: Context) : HorizontalScrollView(context) {
     var pageWidth = 1
@@ -24,6 +26,7 @@ class SnapScroll(context: Context) : HorizontalScrollView(context) {
     private var downY = 0f
     private var startPage = 0
     private var swiping = false
+    private var slowOffered = false
     private var velocity: VelocityTracker? = null
 
     init {
@@ -43,14 +46,19 @@ class SnapScroll(context: Context) : HorizontalScrollView(context) {
                 downY = ev.y
                 startPage = (scrollX / pageWidth.toFloat()).roundToInt()
                 swiping = false
+                slowOffered = false
                 velocity?.recycle()
                 velocity = VelocityTracker.obtain().also { it.addMovement(ev) }
             }
             MotionEvent.ACTION_MOVE -> if (!swiping && ev.pointerCount == 1) {
                 val dx = abs(ev.x - downX)
                 val dy = abs(ev.y - downY)
-                // Clearly sideways only: beyond 3x touch slop and at least twice as wide as high.
-                if (dx > slop * 3 && dx > dy * 2) swiping = true
+                // Clearly sideways only: beyond 3x touch slop and at least twice as wide as high. A fast
+                // start switches pages; a slow one goes to the list first (one event), then to the pages.
+                if (dx > slop * 3 && dx > dy * 2) {
+                    if (slowOffered || isFast(dx, ev.eventTime - ev.downTime, resources.displayMetrics.density)) swiping = true
+                    else slowOffered = true
+                }
             }
             MotionEvent.ACTION_POINTER_DOWN -> swiping = false
         }
@@ -90,7 +98,10 @@ class SnapScroll(context: Context) : HorizontalScrollView(context) {
     // No inertia from the framework: the snap above decides the page.
     override fun fling(velocityX: Int) = Unit
 
-    private companion object {
-        const val SWITCH_DISTANCE = 0.3f
+    companion object {
+        private const val SWITCH_DISTANCE = 0.3f
+
+        /** A sideways drag of [dx] px after [ms] is a page swipe when faster than 0.5 dp per ms. */
+        fun isFast(dx: Float, ms: Long, density: Float) = dx / maxOf(1L, ms) > 0.5f * density
     }
 }

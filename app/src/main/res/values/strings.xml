@@ -207,4 +207,5 @@
     <string name="set_thumbs">Previews (pictures, videos, music covers)</string>
     <string name="set_updir">Show the \"..\" row</string>
     <string name="set_natural">Sort numbers naturally (2 before 10)</string>
+    <string name="dir_empty">empty</string>
 </resources>

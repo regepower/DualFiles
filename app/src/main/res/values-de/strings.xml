@@ -200,4 +200,5 @@
     <string name="set_thumbs">Vorschaubilder (Bilder, Videos, Musik-Cover)</string>
     <string name="set_updir">\"..\"-Zeile zeigen</string>
     <string name="set_natural">Zahlen natürlich sortieren (2 vor 10)</string>
+    <string name="dir_empty">leer</string>
 </resources>
