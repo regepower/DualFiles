@@ -1759,7 +1759,7 @@ class MainActivity : Activity() {
             col.addView(quick)
             // Where it goes: the folder of the other side
             col.addView(TextView(this).apply {
-                text = getString(R.string.arc_target_line, nicePath(targetDir()))
+                setText(getString(R.string.arc_target_line, nicePath(targetDir())))
                 textSize = 13f
                 setTextColor(getColor(R.color.md_on_surface_variant))
                 setPadding(dp(6), 0, dp(6), dp(4))
