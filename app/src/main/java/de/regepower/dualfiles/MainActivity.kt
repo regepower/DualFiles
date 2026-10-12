@@ -1339,8 +1339,39 @@ class MainActivity : Activity() {
 
     private fun showFilterDialog(p: Pane) {
         val values = Filter.values()
-        AlertDialog.Builder(this)
-            .setTitle(R.string.filter_title)
+        // Title, and below it the active name filter (it combines with the type below, so it needs its own line)
+        val head = LinearLayout(this)
+        head.orientation = LinearLayout.VERTICAL
+        head.setPadding(dp(24), dp(20), dp(24), dp(4))
+        head.addView(TextView(this).apply {
+            setText(R.string.filter_title)
+            textSize = 20f
+            setTextColor(getColor(R.color.md_on_surface))
+        })
+        var dialog: AlertDialog? = null
+        if (p.nameQuery.isNotEmpty()) {
+            head.addView(TextView(this).apply {
+                text = getString(R.string.filter_name_active, p.nameQuery)
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(p.color)
+                val x = getDrawable(R.drawable.ic_close)!!.mutate()
+                x.setTint(p.color)
+                setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, x, null)
+                compoundDrawablePadding = dp(8)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(10), 0, dp(4))
+                contentDescription = getString(R.string.filter_name_clear)
+                // A tap removes the name filter
+                setOnClickListener {
+                    p.nameQuery = ""
+                    applyView(p)
+                    dialog?.dismiss()
+                }
+            })
+        }
+        dialog = AlertDialog.Builder(this)
+            .setCustomTitle(head)
             .setSingleChoiceItems(values.map { getString(it.label) }.toTypedArray(), values.indexOf(p.filter)) { d, which ->
                 p.filter = values[which]
                 applyView(p)
@@ -1363,6 +1394,12 @@ class MainActivity : Activity() {
                 applyView(p)
             }
             .setNegativeButton(R.string.cancel, null)
+            .apply {
+                if (p.nameQuery.isNotEmpty()) setNeutralButton(R.string.filter_name_clear) { _, _ ->
+                    p.nameQuery = ""
+                    applyView(p)
+                }
+            }
             .show()
     }
 
