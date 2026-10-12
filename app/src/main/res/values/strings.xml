@@ -80,8 +80,8 @@
     <string name="arc_bad_path">The archive contains unsafe paths and was not unpacked.</string>
     <string name="arc_cancelled">Cancelled.</string>
     <string name="arc_readonly">Archives are read-only here: only unpacking works.</string>
-    <string name="arc_into_folder">Into folder \"%1$s\" in the target</string>
-    <string name="arc_into_target">Directly into the target</string>
+    <string name="arc_into_folder">Into a new folder</string>
+    <string name="arc_into_target">Directly into</string>
     <string name="arc_progress">%1$s of %2$s</string>
     <string name="view_open">View (text/hex)</string>
     <string name="view_text">Text</string>
@@ -191,6 +191,7 @@
     <string name="view_short">View</string>
     <string name="filter_archives">Archives</string>
     <string name="filter_apks">APKs</string>
+    <string name="arc_target_line">To: %1$s</string>
     <string name="arc_extract_zip">Unpack as ZIP</string>
     <string name="arc_opening">Opening archive…</string>
     <string name="viewer_label">DualFiles viewer</string>

@@ -76,7 +76,8 @@ internal object Archive {
 
     private class Listing(val stamp: Long, val count: Int, val items: List<Item>, val error: Int?)
 
-    private val EXTS = setOf("zip", "7z")
+    // App bundles (XAPK, APKS, APKM) are ZIP files holding the split APKs, OBB data and an icon
+    private val EXTS = setOf("zip", "7z", "xapk", "apks", "apkm")
     private val cache = HashMap<String, Listing>()   // archive path -> contents; guarded by itself
 
     fun isArchiveName(f: File) = f.extension.lowercase() in EXTS

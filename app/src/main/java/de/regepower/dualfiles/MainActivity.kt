@@ -1756,6 +1756,14 @@ class MainActivity : Activity() {
         fun q(icon: Int, label: Int, code: Int, danger: Boolean = false) = quick.addView(barAction(icon, label, danger) { go(code) })
         if (inArchive) {
             q(R.drawable.ic_unarchive, R.string.arc_extract, 0)
+            col.addView(quick)
+            // Where it goes: the folder of the other side
+            col.addView(TextView(this).apply {
+                text = getString(R.string.arc_target_line, nicePath(targetDir()))
+                textSize = 13f
+                setTextColor(getColor(R.color.md_on_surface_variant))
+                setPadding(dp(6), 0, dp(6), dp(4))
+            })
         } else {
             q(R.drawable.ic_copy, R.string.copy, 0)
             q(R.drawable.ic_move, R.string.move, 1)
@@ -1767,8 +1775,8 @@ class MainActivity : Activity() {
             }
             q(R.drawable.ic_edit, R.string.rename, 6)
             q(R.drawable.ic_delete, R.string.delete, 2, true)
+            col.addView(quick)
         }
-        col.addView(quick)
 
         fun group(title: Int) = col.addView(TextView(this).apply {
             setText(title)
@@ -1977,6 +1985,14 @@ class MainActivity : Activity() {
     }
 
     /** Short name of a folder for messages: the storage name for a root, else the folder name. */
+    /** [dir] as "storage name/rest", e.g. "Internal storage/Download". */
+    private fun nicePath(dir: File): String {
+        val r = allRoots().filter { dir.path == it.path || dir.path.startsWith(it.path + "/") }.maxByOrNull { it.path.length }
+            ?: return dir.path
+        val rest = dir.path.substring(r.path.length).trimStart('/')
+        return if (rest.isEmpty()) rootName(r) else "${rootName(r)}/$rest"
+    }
+
     private fun folderName(dir: File): String =
         allRoots().firstOrNull { it.path == dir.path }?.let { rootName(it) } ?: dir.name.ifEmpty { dir.path }
 
@@ -2010,11 +2026,23 @@ class MainActivity : Activity() {
             return
         }
         val name = archive.nameWithoutExtension.ifEmpty { "archive" }
-        val items = arrayOf(getString(R.string.arc_into_folder, name), getString(R.string.arc_into_target))
+        val path = nicePath(dst)
+        // Each choice names its full destination; second line smaller and muted
+        fun choice(label: String, where: String) = SpannableStringBuilder(label).apply {
+            append('\n')
+            val at = length
+            append(where)
+            setSpan(RelativeSizeSpan(0.8f), at, length, 0)
+            setSpan(ForegroundColorSpan(getColor(R.color.md_on_surface_variant)), at, length, 0)
+        }
+        val intoFolder = choice(getString(R.string.arc_into_folder), "$path/$name")
+        val direct = choice(getString(R.string.arc_into_target), path)
+        // Whole archive: own folder first; a selection inside it: straight into the target first
+        val folderFirst = selected == listOf("")
         AlertDialog.Builder(this)
             .setTitle(R.string.arc_extract)
-            .setItems(items) { _, which ->
-                val folder = if (which == 0) name else null
+            .setItems(if (folderFirst) arrayOf(intoFolder, direct) else arrayOf(direct, intoFolder)) { _, which ->
+                val folder = if ((which == 0) == folderFirst) name else null
                 // Names that will appear in the target (only known for archives we can list)
                 val tops = when {
                     folder != null -> listOf(folder)

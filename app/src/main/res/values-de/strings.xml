@@ -75,8 +75,8 @@
     <string name="arc_bad_path">Das Archiv enthält unsichere Pfade und wurde nicht entpackt.</string>
     <string name="arc_cancelled">Abgebrochen.</string>
     <string name="arc_readonly">Archive sind hier nur lesbar: nur Entpacken geht.</string>
-    <string name="arc_into_folder">In Ordner \"%1$s\" im Ziel</string>
-    <string name="arc_into_target">Direkt ins Ziel</string>
+    <string name="arc_into_folder">In neuen Ordner</string>
+    <string name="arc_into_target">Direkt nach</string>
     <string name="arc_progress">%1$s von %2$s</string>
     <string name="view_open">Anzeigen (Text/Hex)</string>
     <string name="view_text">Text</string>
@@ -184,6 +184,7 @@
     <string name="view_short">Anzeigen</string>
     <string name="filter_archives">Archive</string>
     <string name="filter_apks">APKs</string>
+    <string name="arc_target_line">Nach: %1$s</string>
     <string name="arc_extract_zip">Als ZIP entpacken</string>
     <string name="arc_opening">Archiv wird geöffnet…</string>
     <string name="viewer_label">DualFiles-Betrachter</string>
