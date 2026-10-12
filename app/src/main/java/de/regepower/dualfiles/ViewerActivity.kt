@@ -239,7 +239,10 @@ class ViewerActivity : Activity() {
             }
             override fun row(i: Int): String = when {
                 hex -> hexRow(i)
-                wrapping() -> cachedRow(wrapRow[i]).let { t -> t.substring(minOf(wrapCol[i], t.length), minOf(wrapCol[i] + wrapCols, t.length)) }
+                wrapping() -> cachedRow(wrapRow[i]).let { t ->
+                    val end = if (i + 1 < wrapCount && wrapRow[i + 1] == wrapRow[i]) wrapCol[i + 1] else t.length
+                    t.substring(minOf(wrapCol[i], t.length), minOf(end, t.length))
+                }
                 else -> cachedRow(i)
             }
             override fun maxChars() = when {
@@ -406,7 +409,11 @@ class ViewerActivity : Activity() {
 
     private fun cachedRow(i: Int): String = rowCache.get(i) ?: textRow(i).also { rowCache.put(i, it) }
 
-    /** Splits every text row into lines that fit the width (files up to [WRAP_LIMIT]). */
+    /**
+     * Splits every text row into lines that fit the width (files up to [WRAP_LIMIT]): after a space where
+     * possible (tabs are spaces already), inside a word only when it is longer than a line. Spaces at a break
+     * stay at the end of the line (beyond the edge they are simply not seen), so copying keeps the text exact.
+     */
     private fun rebuildWrap() {
         if (!wrapping()) return
         val cols = grid.columns()
@@ -414,9 +421,10 @@ class ViewerActivity : Activity() {
         var colsAt = IntArray(rows.size)
         var n = 0
         for (r in 0 until rowCount) {
-            val len = cachedRow(r).length
+            val t = cachedRow(r)
+            val len = t.length
             var c = 0
-            do {
+            while (true) {
                 if (n == rows.size) {
                     rows = rows.copyOf(n * 2)
                     colsAt = colsAt.copyOf(n * 2)
@@ -424,8 +432,21 @@ class ViewerActivity : Activity() {
                 rows[n] = r
                 colsAt[n] = c
                 n++
-                c += cols
-            } while (c < len)
+                if (len - c <= cols) break
+                val lim = c + cols
+                var k: Int
+                if (t[lim] == ' ') {
+                    // The line ends right before a space: the spaces hang at its end
+                    k = lim
+                    while (k < len && t[k] == ' ') k++
+                } else {
+                    k = lim
+                    while (k > c && t[k - 1] != ' ') k--
+                    if (k == c) k = lim   // one word longer than the line: cut it
+                }
+                if (k >= len) break
+                c = k
+            }
         }
         wrapRow = rows
         wrapCol = colsAt
