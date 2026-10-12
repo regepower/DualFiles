@@ -1232,6 +1232,11 @@ class MainActivity : Activity() {
     /** Sort / filter symbols in the header show the state of the visible side (filter coloured when active). */
     private fun updateTools() {
         if (!::sortBtn.isInitialized) return
+        // Sorting and filtering belong to the file lists: hidden on the tree pages
+        val page = Math.round(pager.scrollX / pager.pageWidth.toFloat())
+        val lists = if (page == 1 || page == 2) View.VISIBLE else View.GONE
+        sortBtn.visibility = lists
+        filterBtn.visibility = lists
         val p = currentPane()
         val arrow = if (p.sortDesc) "↓" else "↑"
         sortBtn.tooltipText = getString(R.string.chip_sort, getString(p.sortBy.label), arrow)
@@ -1291,19 +1296,39 @@ class MainActivity : Activity() {
         refreshSelection()
     }
 
-    /** Sort and filter of the in-memory list: no disk access. Folders always come first. */
+    /**
+     * Sort and filter of the in-memory list: no disk access. Like Windows: folders first, then files, each
+     * group in the chosen order (folders by name when sorting by size or type, which they do not have).
+     */
     private fun viewOf(p: Pane): List<Entry> {
-        // Archive tree: its own order; a filter hides files only, so the folders keep the tree together
-        if (p.inArchive) return p.raw.filter { it.up || it.isDir || matches(it, p) }
+        val name: Comparator<Entry> = compareBy(Natural) { it.key }
         val cmp: Comparator<Entry> = when (p.sortBy) {
-            SortBy.NAME -> compareBy(Natural) { it.key }
-            SortBy.DATE -> compareBy<Entry> { it.modified }
-            SortBy.SIZE -> compareBy<Entry> { it.size }
-            SortBy.TYPE -> compareBy<Entry> { it.file.extension.lowercase() }.thenBy(Natural) { it.key }
+            SortBy.NAME -> name
+            SortBy.DATE -> compareBy<Entry> { it.modified }.then(name)
+            SortBy.SIZE -> compareBy<Entry> { it.size }.then(name)
+            SortBy.TYPE -> compareBy<Entry> { it.file.extension.lowercase() }.then(name)
         }
-        val items = p.raw.filter { !it.up && matches(it, p) }
-            .sortedWith(compareBy<Entry> { !it.isDir }.then(if (p.sortDesc) cmp.reversed() else cmp))
-        return p.raw.filter { it.up } + items
+        val dirCmp = if (p.sortBy == SortBy.NAME || p.sortBy == SortBy.DATE) cmp else name
+        fun sorted(group: List<Entry>): List<Entry> {
+            val (dirs, files) = group.partition { it.isDir }
+            return dirs.sortedWith(if (p.sortDesc) dirCmp.reversed() else dirCmp) +
+                files.filter { matches(it, p) }.sortedWith(if (p.sortDesc) cmp.reversed() else cmp)
+        }
+        val up = p.raw.filter { it.up }
+        if (!p.inArchive) return up + sorted(p.raw.filter { !it.up && (it.isDir && matches(it, p) || !it.isDir) })
+        // Archive tree: each level sorted on its own, unfolded folders followed by their contents;
+        // a filter hides files only, so the folders keep the tree together
+        val byParent = p.raw.filter { !it.up }.groupBy { it.file.parent ?: "" }
+        val out = ArrayList<Entry>(p.raw.size)
+        out.addAll(up)
+        fun add(entries: List<Entry>) {
+            for (e in sorted(entries)) {
+                out.add(e)
+                if (e.isDir) byParent[e.file.path]?.let { add(it) }
+            }
+        }
+        p.raw.firstOrNull { !it.up && it.depth == 0 }?.file?.parent?.let { top -> byParent[top]?.let { add(it) } }
+        return out
     }
 
     private fun matches(e: Entry, p: Pane): Boolean {
