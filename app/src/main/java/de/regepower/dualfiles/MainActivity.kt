@@ -226,6 +226,54 @@ internal class PanList(context: Context) : ListView(context) {
         }
         return false
     }
+    // Pull to refresh: at the top of the list, dragging further down pulls a refresh symbol after it
+    var onPull: ((Float) -> Unit)? = null           // distance pulled in px (0 = back)
+    var onPullRelease: ((Float) -> Unit)? = null    // distance when the finger lifts
+    private var pulling = false
+    private var pullAtTop = false
+    private var pullDownX = 0f
+    private var pullDownY = 0f
+    private var pullStartY = 0f
+
+    private fun pullTouch(ev: MotionEvent): Boolean {
+        if (onPull == null) return false
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pulling = false
+                pullAtTop = !canScrollVertically(-1)
+                pullDownX = ev.x
+                pullDownY = ev.y
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!pulling && pullAtTop && ev.pointerCount == 1) {
+                    val dy = ev.y - pullDownY
+                    if (dy > touchSlop * 2 && dy > Math.abs(ev.x - pullDownX) * 2) {
+                        pulling = true
+                        pullStartY = ev.y
+                        val c = MotionEvent.obtain(ev.downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, ev.x, ev.y, 0)
+                        super.dispatchTouchEvent(c)
+                        c.recycle()
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                }
+                if (pulling) {
+                    onPull?.invoke(maxOf(0f, ev.y - pullStartY))
+                    return true
+                }
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> if (pulling) {
+                pulling = false
+                onPull?.invoke(0f)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (pulling) {
+                pulling = false
+                onPullRelease?.invoke(if (ev.actionMasked == MotionEvent.ACTION_UP) maxOf(0f, ev.y - pullStartY) else 0f)
+                return true
+            }
+        }
+        return false
+    }
+
     // One finger, slow and sideways: shifts the names (a fast swipe switches the page instead)
     private var panning = false
     private var panX = 0f
@@ -320,6 +368,7 @@ internal class PanList(context: Context) : ListView(context) {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (rangeTouch(ev)) return true
+        if (!ignore && pullTouch(ev)) return true
         if (!ignore && slowPan(ev)) return true
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -1097,6 +1146,37 @@ class MainActivity : Activity() {
             visibility = View.GONE
         }
         stack.addView(p.loading, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER))
+        // Pull to refresh: a round refresh symbol follows the finger (rubber band) and reloads when let go
+        val pull = ImageView(this).apply {
+            setImageResource(R.drawable.ic_refresh)
+            imageTintList = android.content.res.ColorStateList.valueOf(p.onColor)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(p.color)
+            }
+            scaleType = ImageView.ScaleType.CENTER
+            elevation = dp(4).toFloat()
+            alpha = 0f
+            translationY = -dp(48).toFloat()
+        }
+        stack.addView(pull, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+        val trigger = dp(72).toFloat()
+        fun rubber(d: Float) = trigger * 1.6f * (1f - 1f / (d / trigger + 1f))   // eases off the further you pull
+        list.onPull = { d ->
+            val r = rubber(d)
+            pull.animate().cancel()
+            pull.translationY = -dp(48) + r
+            pull.alpha = (r / trigger).coerceAtMost(1f)
+            pull.rotation = r * 3f
+        }
+        list.onPullRelease = { d ->
+            if (rubber(d) >= trigger) {
+                // Read the folder again (counts too) and spin the symbol once while it goes back
+                treeCounts.clear()
+                loadPane(p)
+                pull.animate().rotationBy(360f).translationY(-dp(48).toFloat()).alpha(0f).setStartDelay(150).setDuration(450).start()
+            } else pull.animate().translationY(-dp(48).toFloat()).alpha(0f).rotation(0f).setStartDelay(0).setDuration(200).start()
+        }
         page.addView(stack, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         page.addView(rangeBar(list), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(14)))
         return page
