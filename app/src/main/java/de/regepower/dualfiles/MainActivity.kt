@@ -666,6 +666,9 @@ class MainActivity : Activity() {
         Toast.makeText(this, R.string.back_again, Toast.LENGTH_SHORT).show()
     }
 
+    /** File marked only while the hold menu is open (long press): no marking bar for it. */
+    private var sheetMark: File? = null
+
     /** Back from a screen opened out of the settings (file dialog, viewer, app chooser): one level up again. */
     private var returnTo: (() -> Unit)? = null
 
@@ -1069,7 +1072,10 @@ class MainActivity : Activity() {
             if (!e.up) {
                 // Marked only while the sheet is open (its actions work on the marks); unmarked again after
                 val temp = !p.selected.contains(e.file)
-                if (temp) toggle(p, e.file)
+                if (temp) {
+                    sheetMark = e.file
+                    toggle(p, e.file)
+                }
                 showMenu(e.file, e.isDir, if (temp) p else null)
             }
             true
@@ -1504,8 +1510,8 @@ class MainActivity : Activity() {
     }
 
     private fun updateBar() {
-        // Only for several marked entries: a single one has the hold menu
-        val active = panes.firstOrNull { it.selected.size > 1 }
+        // Marked with the check (icon): the bar shows. A mark made only for the hold menu (long press) does not.
+        val active = panes.firstOrNull { p -> p.selected.isNotEmpty() && !(p.selected.size == 1 && sheetMark in p.selected) }
         val appears = active != null && bar.visibility != View.VISIBLE
         bar.visibility = if (active == null) View.GONE else View.VISIBLE
         if (active == null) return
@@ -1652,7 +1658,9 @@ class MainActivity : Activity() {
         col.addView(head)
 
         fun unmark() {
-            if (tempIn != null && tempIn.selected.remove(file)) refreshSelection()
+            if (tempIn == null) return
+            sheetMark = null
+            if (tempIn.selected.remove(file)) refreshSelection() else updateBar()
         }
         var chosen = false
         dialog.setOnDismissListener { if (!chosen) unmark() }
