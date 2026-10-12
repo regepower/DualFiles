@@ -13,7 +13,7 @@ internal object Syntax {
     const val TAG = 4
     const val KEY = 5
 
-    enum class Lang { C, CSS, PY, SH, JSON, XML, INI, YAML, SQL, MD }
+    enum class Lang { C, CSS, PY, SH, JSON, XML, INI, YAML, SQL, LUA, MD }
 
     fun langFor(name: String): Lang? = when (name.substringAfterLast('.', "").lowercase()) {
         "kt", "kts", "java", "c", "h", "cpp", "cc", "hpp", "js", "mjs", "ts", "tsx", "jsx", "cs", "go", "rs",
@@ -26,6 +26,7 @@ internal object Syntax {
         "ini", "conf", "cfg", "properties", "prop", "toml", "env" -> Lang.INI
         "yml", "yaml" -> Lang.YAML
         "sql" -> Lang.SQL
+        "lua" -> Lang.LUA
         "md", "markdown" -> Lang.MD
         else -> null
     }
@@ -44,6 +45,10 @@ internal object Syntax {
     private val SH_WORDS = (
         "if then else elif fi for while until do done case esac in function return local export echo exit set " +
             "unset readonly shift source cd test true false"
+        ).split(' ').toHashSet()
+    private val LUA_WORDS = (
+        "and break do else elseif end false for function goto if in local nil not or repeat return then true " +
+            "until while self require"
         ).split(' ').toHashSet()
     private val SQL_WORDS = (
         "select from where and or not insert into values update set delete create table drop alter index on join " +
@@ -69,6 +74,7 @@ internal object Syntax {
             Lang.C -> C_WORDS
             Lang.PY -> PY_WORDS
             Lang.SH -> SH_WORDS
+            Lang.LUA -> LUA_WORDS
             else -> null
         }
         // Key of "key = value" / "key: value" (ini, yaml) or a [section]
@@ -104,7 +110,7 @@ internal object Syntax {
                     out.add(i, to, COMMENT)
                     return
                 }
-                lang == Lang.SQL && c == '-' && s.startsWith("--", i) -> {
+                (lang == Lang.SQL || lang == Lang.LUA) && c == '-' && s.startsWith("--", i) -> {
                     out.add(i, to, COMMENT)
                     return
                 }
