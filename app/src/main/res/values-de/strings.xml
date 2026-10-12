@@ -37,7 +37,7 @@
     <string name="filter_audio">Audio</string>
     <string name="filter_docs">Dokumente</string>
     <string name="filter_name">Name enthält…</string>
-    <string name="filter_name_active">Name enthält „%1$s“</string>
+    <string name="filter_name_value">„%1$s“</string>
     <string name="filter_name_clear">Namensfilter entfernen</string>
     <string name="filter_name_hint">Text im Namen</string>
     <string name="chip_sort">Sortieren: %1$s %2$s</string>

@@ -1339,45 +1339,59 @@ class MainActivity : Activity() {
 
     private fun showFilterDialog(p: Pane) {
         val values = Filter.values()
-        // Title, and below it the active name filter (it combines with the type below, so it needs its own line)
-        val head = LinearLayout(this)
-        head.orientation = LinearLayout.VERTICAL
-        head.setPadding(dp(24), dp(20), dp(24), dp(4))
-        head.addView(TextView(this).apply {
-            setText(R.string.filter_title)
-            textSize = 20f
-            setTextColor(getColor(R.color.md_on_surface))
-        })
         var dialog: AlertDialog? = null
+        // One line under the list: "Name contains…" (opens the input), then the text in bold colour and ✕
+        val row = LinearLayout(this)
+        row.gravity = Gravity.CENTER_VERTICAL
+        row.setPadding(dp(24), dp(4), dp(12), dp(4))
+        val accent = TypedValue().also { theme.resolveAttribute(android.R.attr.colorAccent, it, true) }.data
+        row.addView(TextView(this).apply {
+            setText(R.string.filter_name)
+            textSize = 15f
+            setTextColor(accent)
+            setPadding(0, dp(12), dp(8), dp(12))
+        })
         if (p.nameQuery.isNotEmpty()) {
-            head.addView(TextView(this).apply {
-                text = getString(R.string.filter_name_active, p.nameQuery)
+            val query = TextView(this).apply {
+                text = getString(R.string.filter_name_value, p.nameQuery)
                 textSize = 15f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(p.color)
-                val x = getDrawable(R.drawable.ic_close)!!.mutate()
-                x.setTint(p.color)
-                setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, x, null)
-                compoundDrawablePadding = dp(8)
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(10), 0, dp(4))
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }
+            row.addView(query, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(ImageButton(this).apply {
+                setImageResource(R.drawable.ic_close)
+                imageTintList = android.content.res.ColorStateList.valueOf(p.color)
+                val sel = TypedValue()
+                theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, sel, true)
+                setBackgroundResource(sel.resourceId)
                 contentDescription = getString(R.string.filter_name_clear)
-                // A tap removes the name filter
+                tooltipText = contentDescription
+                // ✕ removes the name filter; the dialog stays for the type
                 setOnClickListener {
                     p.nameQuery = ""
                     applyView(p)
-                    dialog?.dismiss()
+                    row.removeView(query)
+                    row.removeView(this)
                 }
-            })
+            }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        }
+        row.isClickable = true
+        row.setBackgroundResource(TypedValue().also { theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true) }.resourceId)
+        row.setOnClickListener {
+            dialog?.dismiss()
+            showNameDialog(p)
         }
         dialog = AlertDialog.Builder(this)
-            .setCustomTitle(head)
+            .setTitle(R.string.filter_title)
             .setSingleChoiceItems(values.map { getString(it.label) }.toTypedArray(), values.indexOf(p.filter)) { d, which ->
                 p.filter = values[which]
                 applyView(p)
                 d.dismiss()
             }
-            .setNeutralButton(R.string.filter_name) { _, _ -> showNameDialog(p) }
+            .setView(row)
             .show()
     }
 
