@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">DualFiles</string>
-    <string name="tab_source">Source</string>
-    <string name="tab_target">Target</string>
-    <string name="band_source">Source</string>
-    <string name="band_target">Target</string>
+    <string name="tab_source">Left</string>
+    <string name="tab_target">Right</string>
+    <string name="band_source">Left</string>
+    <string name="band_target">Right</string>
     <string name="up" translatable="false">..</string>
     <string name="items_count">%1$d items</string>
     <string name="copy">Copy</string>
@@ -140,8 +140,8 @@
     <string name="net_found">Found servers</string>
     <string name="net_add">+ Network server (FTP / WebDAV)…</string>
     <string name="net_loading">Loading from the server…</string>
-    <string name="tab_tree_source">Tree S</string>
-    <string name="tab_tree_target">Tree T</string>
+    <string name="tab_tree_source">Tree L</string>
+    <string name="tab_tree_target">Tree R</string>
     <string name="more">More</string>
     <string name="sel_all">All</string>
     <string name="sel_invert">Invert</string>
@@ -149,8 +149,8 @@
     <string name="selected_size">%1$d marked · %2$s</string>
     <string name="empty_folder">Folder is empty</string>
     <string name="empty_filter">Nothing matches the filter</string>
-    <string name="badge_source">S</string>
-    <string name="badge_target">T</string>
+    <string name="badge_source">L</string>
+    <string name="badge_target">R</string>
     <string name="menu_more_marked">+ %1$d more marked</string>
     <string name="menu_open">Open</string>
     <string name="menu_archive">Archive</string>
@@ -186,8 +186,8 @@
     <string name="sort_type_za">Type Z–A</string>
     <string name="copy_to">Copy to…</string>
     <string name="move_to">Move to…</string>
-    <string name="same_target">Target = this folder</string>
-    <string name="same_source">Source = this folder</string>
+    <string name="same_target">Right = this folder</string>
+    <string name="same_source">Left = this folder</string>
     <string name="swap_sides">Swap sides</string>
     <string name="menu_to">Destination</string>
     <string name="unpack_short">Unpack</string>

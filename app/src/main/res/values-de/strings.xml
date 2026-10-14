@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="tab_source">Quelle</string>
-    <string name="tab_target">Ziel</string>
-    <string name="band_source">Quelle</string>
-    <string name="band_target">Ziel</string>
+    <string name="tab_source">Links</string>
+    <string name="tab_target">Rechts</string>
+    <string name="band_source">Links</string>
+    <string name="band_target">Rechts</string>
     <string name="items_count">%1$d Elemente</string>
     <string name="copy">Kopieren</string>
     <string name="move">Verschieben</string>
@@ -133,8 +133,8 @@
     <string name="net_found">Gefundene Server</string>
     <string name="net_add">+ Netzwerk-Server (FTP / WebDAV)…</string>
     <string name="net_loading">Lade vom Server…</string>
-    <string name="tab_tree_source">Baum Q</string>
-    <string name="tab_tree_target">Baum Z</string>
+    <string name="tab_tree_source">Baum L</string>
+    <string name="tab_tree_target">Baum R</string>
     <string name="more">Mehr</string>
     <string name="sel_all">Alle</string>
     <string name="sel_invert">Umkehren</string>
@@ -142,8 +142,8 @@
     <string name="selected_size">%1$d markiert · %2$s</string>
     <string name="empty_folder">Ordner ist leer</string>
     <string name="empty_filter">Nichts passt zum Filter</string>
-    <string name="badge_source">Q</string>
-    <string name="badge_target">Z</string>
+    <string name="badge_source">L</string>
+    <string name="badge_target">R</string>
     <string name="menu_more_marked">+ %1$d weitere markiert</string>
     <string name="menu_open">Öffnen</string>
     <string name="menu_archive">Archiv</string>
@@ -179,8 +179,8 @@
     <string name="sort_type_za">Typ Z–A</string>
     <string name="copy_to">Kopieren nach…</string>
     <string name="move_to">Verschieben nach…</string>
-    <string name="same_target">Ziel = dieser Ordner</string>
-    <string name="same_source">Quelle = dieser Ordner</string>
+    <string name="same_target">Rechts = dieser Ordner</string>
+    <string name="same_source">Links = dieser Ordner</string>
     <string name="swap_sides">Seiten tauschen</string>
     <string name="menu_to">Ziel wählen</string>
     <string name="unpack_short">Entpacken</string>
