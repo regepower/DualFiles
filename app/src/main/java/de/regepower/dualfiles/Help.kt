@@ -80,6 +80,7 @@ object Help {
         text.setSpan(URLSpan(url), start, start + url.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         footer.text = text
         footer.movementMethod = LinkMovementMethod.getInstance()
+        col.addView(UpdateCheck.toggle(a))
         col.addView(footer)
 
         val scroll = ScrollView(a)

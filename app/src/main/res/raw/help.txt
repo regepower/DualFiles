@@ -26,4 +26,7 @@ If a name already exists in the target, the app asks: overwrite (folders are mer
 ⋮ top right → Settings, in groups: Display (switches for hidden files, previews including music covers, the ".." row, natural number order 2 before 10 – take effect at once), Apps (fixed app per file type, change or delete), Storage (add or remove cloud folders), Configuration (save and load: app choices, favourites, settings including viewer zoom and options), Problems (error report: last crash or hang, to copy or share).
 
 # Access and privacy
-The app needs "all files access"; the system setting opens on first start. No data is collected or sent. The app only goes online to servers you added yourself.
+The app needs "all files access"; the system setting opens on first start. No data is collected or sent. The app only goes online to servers you added yourself and for the update check (once a day to GitHub, can be switched off).
+
+# Updates
+Once a day the app checks GitHub for a newer version and offers the download. The browser downloads it, tapping the file installs it; settings are kept. Switch it off below: "Check for updates on start".

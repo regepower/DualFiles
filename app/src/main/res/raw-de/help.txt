@@ -26,4 +26,7 @@ Gibt es einen Namen im Ziel schon, fragt die App: Überschreiben (Ordner werden 
 ⋮ oben rechts → Einstellungen, in Gruppen: Anzeige (Schalter für versteckte Dateien, Vorschaubilder samt Musik-Cover, ".."-Zeile, natürliche Zahlen-Sortierung 2 vor 10 – wirken sofort), Apps (feste App je Dateityp ändern oder löschen), Speicher (Cloud-Ordner hinzufügen oder entfernen), Konfiguration (speichern und laden: App-Zuordnungen, Favoriten, Einstellungen samt Betrachter-Zoom und -Optionen), Fehler (Fehlerbericht: letzter Absturz oder Hänger, zum Kopieren oder Teilen).
 
 # Zugriff und Datenschutz
-Die App braucht "Zugriff auf alle Dateien"; beim ersten Start öffnet sich die Systemeinstellung. Es werden keine Daten gesammelt oder gesendet. Ins Netz geht die App nur zu Servern, die du selbst eingetragen hast.
+Die App braucht "Zugriff auf alle Dateien"; beim ersten Start öffnet sich die Systemeinstellung. Es werden keine Daten gesammelt oder gesendet. Ins Netz geht die App nur zu Servern, die du selbst eingetragen hast, und für die Update-Prüfung (einmal am Tag zu GitHub, abschaltbar).
+
+# Updates
+Einmal am Tag prüft die App auf GitHub, ob es eine neue Version gibt, und bietet den Download an. Der Browser lädt sie, Antippen der Datei installiert sie; die Einstellungen bleiben erhalten. Abschalten unten: „Beim Start nach Updates suchen“.

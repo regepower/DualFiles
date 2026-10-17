@@ -205,4 +205,10 @@
     <string name="set_updir">\"..\"-Zeile zeigen</string>
     <string name="set_natural">Zahlen natürlich sortieren (2 vor 10)</string>
     <string name="dir_empty">leer</string>
+    <string name="update_auto">Beim Start nach Updates suchen</string>
+    <string name="update_title">Update verfügbar</string>
+    <string name="update_text">%1$s %2$s ist verfügbar (installiert: %3$s). Im Browser herunterladen und die Datei antippen, um sie zu installieren.</string>
+    <string name="update_install">Herunterladen</string>
+    <string name="update_later">Später</string>
+    <string name="update_skip">Diese Version überspringen</string>
 </resources>

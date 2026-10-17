@@ -212,4 +212,10 @@
     <string name="set_updir">Show the \"..\" row</string>
     <string name="set_natural">Sort numbers naturally (2 before 10)</string>
     <string name="dir_empty">empty</string>
+    <string name="update_auto">Check for updates on start</string>
+    <string name="update_title">Update available</string>
+    <string name="update_text">%1$s %2$s is available (installed: %3$s). Download it in the browser, then tap the file to install.</string>
+    <string name="update_install">Download</string>
+    <string name="update_later">Later</string>
+    <string name="update_skip">Skip this version</string>
 </resources>
